@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# sysinfo_page - Enter the Helix system
+	
+python $HELIX_PYTHON_PATH/commands.py helix "$@"
