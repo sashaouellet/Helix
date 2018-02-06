@@ -23,10 +23,6 @@ def pop(showName):
 	env.setEnvironment('show', showName)
 	env.show = show
 
-	seq, shot, element = env.show.getElement('100', '1', 'set', 'foo')
-
-	print 'ELEMENT:', element
-
 	print 'Set environment for {}'.format(showName)
 
 def mke(seqNum, shotNum, type, name):
@@ -37,7 +33,7 @@ def mke(seqNum, shotNum, type, name):
 			print 'Element already exists (did you mean to use "ge"?)'
 			return
 
-		shot.addElement(Element.factory(type.lower(), name))
+		shot.addElement(Element.factory(seqNum, shotNum, type.lower(), name))
 		db.save()
 
 	except DatabaseError:
@@ -50,6 +46,8 @@ def ge(seqNum, shotNum, type, name):
 		if not element:
 			print 'Element doesn\'t exist (Check for typos in the name, or make a new element using "mke")'
 			return
+
+		return element
 
 	except DatabaseError:
 		return

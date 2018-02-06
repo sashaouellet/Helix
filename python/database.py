@@ -1,6 +1,7 @@
 import json
 import os, sys
 import environment as env
+import fileutils
 
 class Database(object):
 	_instance = None
@@ -292,8 +293,15 @@ class Element(DatabaseObject):
 	EFFECT = 'effect'
 	ELEMENT_TYPES = [SET, CHARACTER, PROP, EFFECT]
 
+	def getDiskLocation(self):
+		workDir = env.getEnvironment('work')
+		show = env.show
+		seq, shot = self.get('parent').split('/')
+
+		return os.path.join(workDir, show.get('dirName'), fileutils.formatShotDir(seq, shot), self.get('type'), self.get('name'))
+
 	@staticmethod
-	def factory(type, name):
+	def factory(seqNum, shotNum, type, name):
 		element = None
 
 		if type == Element.SET:
@@ -307,8 +315,15 @@ class Element(DatabaseObject):
 		else:
 			raise ValueError('Invalid element type specified')
 
+		user, time = env.getCreationInfo()
+
 		element.set('name', name)
 		element.set('type', type)
+		element.set('author', user)
+		element.set('creation', time)
+		element.set('parent', '{}/{}'.format(seqNum, shotNum))
+
+		os.makedirs(element.getDiskLocation())
 
 		return element
 
