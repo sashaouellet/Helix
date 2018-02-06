@@ -1,5 +1,5 @@
 import json
-import os, sys
+import os, sys, shutil, glob
 import environment as env
 import fileutils
 
@@ -293,12 +293,54 @@ class Element(DatabaseObject):
 	EFFECT = 'effect'
 	ELEMENT_TYPES = [SET, CHARACTER, PROP, EFFECT]
 
-	def getDiskLocation(self):
-		workDir = env.getEnvironment('work')
+	def versionUp(self, fileType): # TODO: also implement rollback function
+		workDir = self.getDiskLocation()
+		relDir = self.getDiskLocation(workDir=False)
+		versionsDir = os.path.join(relDir, '.versions')
+
+		if not os.path.exists(versionsDir):
+			os.makedirs(versionsDir)
+
+		# TODO: Is 'ext' determined by project manager? Does the artist set the ext they will be handing off?
+
+		workDirCopy = os.path.join(workDir, '{}.{}'.format(self.get('name'), self.get('ext'))) # TODO: determine format for publish file name
+		version = self.get('version')
+
+		if fileType == 'sequence':
+			workDirCopy = os.path.join(workDir, '{}.{}.{}'.format(self.get('name'), '[0-9]' * env.FRAME_PADDING, self.get('ext')))
+			seq = glob.glob(workDirCopy)
+
+			if not seq:
+				print 'Could not find the expected sequence: {}'.format(os.path.join(workDir, '{}.{}.{}'.format(self.get('name'), '#' * env.FRAME_PADDING, self.get('ext'))))
+				return
+		else:
+			fileName = os.path.split(workDirCopy)[1]
+
+			if not os.path.exists(workDirCopy):
+				# Artist hasn't made a file that matches what we expect to publish
+				print 'Could not find the expected file: {}'.format(fileName)
+				return
+
+			baseName, ext = os.path.splitext(fileName)
+			versionedFileName = '{baseName}.{version}.{ext}'.format(
+					baseName=baseName,
+					version='v{}'.format(str(version).zfill(env.VERSION_PADDING)),
+					ext=ext
+				)
+			versionDest = os.path.join(versionsDir, versionedFileName)
+			versionlessFile = os.path.join(relDir, fileName)
+
+			shutil.copy(workDirCopy, versionDest)
+			os.symlink(versionDest, versionlessFile)
+
+			self.set('version', version + 1)
+
+	def getDiskLocation(self, workDir=True):
+		baseDir = env.getEnvironment('work') if workDir else env.getEnvironment('release')
 		show = env.show
 		seq, shot = self.get('parent').split('/')
 
-		return os.path.join(workDir, show.get('dirName'), fileutils.formatShotDir(seq, shot), self.get('type'), self.get('name'))
+		return os.path.join(baseDir, show.get('dirName'), fileutils.formatShotDir(seq, shot), self.get('type'), self.get('name'))
 
 	@staticmethod
 	def factory(seqNum, shotNum, type, name):
@@ -321,6 +363,7 @@ class Element(DatabaseObject):
 		element.set('type', type)
 		element.set('author', user)
 		element.set('creation', time)
+		element.set('version', 1)
 		element.set('parent', '{}/{}'.format(seqNum, shotNum))
 
 		os.makedirs(element.getDiskLocation())
@@ -340,13 +383,4 @@ class Effect(Element):
 	pass
 
 if __name__ == '__main__':
-	db = Database('/home/souell20/mount/stuhome/Helix/db/db.json')
-
-	show = db.getShow('wblock')
-	seq, shot, el = show.getElement('100', '1', 'set', 'foo')
-
-	e = Element.factory('set', 'foo')
-
-	shot.addElement(e)
-
-	db.save()
+	e = Element.factory('100', '1', 'prop', 'foo')

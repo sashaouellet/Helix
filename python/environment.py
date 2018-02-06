@@ -2,6 +2,11 @@ import os
 
 VAR_PREFIX = 'HELIX_'
 DATE_FORMAT = '%m%d%y-%H:%M:%S' # TODO: pull from config
+VERSION_PADDING = 4 # TODO: pull from config
+FRAME_PADDING = 4 # TODO: pull from config
+
+show = None
+element = None
 
 def setEnvironment(var, value):
 	os.environ[VAR_PREFIX + var.upper()] = value

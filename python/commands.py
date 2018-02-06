@@ -47,10 +47,20 @@ def ge(seqNum, shotNum, type, name):
 			print 'Element doesn\'t exist (Check for typos in the name, or make a new element using "mke")'
 			return
 
-		return element
+		env.setEnvironment('element', element.getDiskLocation())
+		env.element = element
 
 	except DatabaseError:
 		return
+
+def pub(fileType='single'):
+	element = env.element
+
+	if not element:
+		print 'Element could not be retrieved, try getting it again with "ge"'
+		return
+
+	element.versionUp(fileType.lower())
 
 # Debug and dev commands
 def dump(expanded=False):
@@ -103,6 +113,19 @@ def main(cmd, argv):
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
 		ge(**args)
+	elif cmd == 'pub':
+		# Cannot publish if element hasn't been retrieved to work on yet
+		if not env.getEnvironment('element'):
+			print 'Please get an element to work on first'
+			return
+
+		parser = argparse.ArgumentParser(prog='pub', description='Publish a new version of the current working element')
+
+		parser.add_argument('fileType', help='The type of file (or files) that will be published. By default, if omitted, this will be a standard single file. Specify "sequence" if you are publishing a sequence of files (image sequence, geometry cache, etc.)')
+
+		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
+
+		pub(**args)
 	elif cmd == 'help' or cmd == 'h':
 		pass # TODO: implement help output
 
