@@ -63,6 +63,19 @@ def pub(sequence=False):
 
 	element.versionUp(sequence)
 
+	print 'Published new version: {}'.format(int(element.get('version')) - 1)
+
+def mod(attribute, value):
+	element = env.element
+
+	if not element:
+		print 'Element could not be retrieved, try getting it again with "ge"'
+		return
+
+	element.set(attribute, value)
+
+	print 'Set {} to {}'.format(attribute, value)
+
 # Debug and dev commands
 def dump(expanded=False):
 	if expanded:
@@ -127,6 +140,33 @@ def main(cmd, argv):
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
 		pub(**args)
+	elif cmd == 'mod':
+		# Cannot publish if element hasn't been retrieved to work on yet
+		if not env.getEnvironment('element'):
+			print 'Please get an element to work on first'
+			return
+
+		parser = argparse.ArgumentParser(prog='mod', description='Modify attributes regarding the current working element')
+
+		parser.add_argument('attribute', help='The name of the attribute you are trying to modify (i.e. ext if you wish to change the expected extension this element produces')
+		parser.add_argument('value', help='The value to set the given attribute to')
+
+		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
+
+		mod(**args)
+	elif cmd == 'cwe':
+		# Cannot publish if element hasn't been retrieved to work on yet
+		if not env.getEnvironment('element'):
+			print 'Please get an element to work on first'
+			return
+
+		element = env.element
+
+		if not element:
+			print 'Element could not be retrieved, try getting it again with "ge"'
+			return
+
+		print element
 	elif cmd == 'help' or cmd == 'h':
 		pass # TODO: implement help output
 

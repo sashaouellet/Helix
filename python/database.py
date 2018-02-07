@@ -374,6 +374,9 @@ class Element(DatabaseObject):
 
 		return element
 
+	def __repr__(self):
+		return '{} in sequence {} shot {}'.format(self.get('name'), *self.get('parent').split('/'))
+
 class Set(Element):
 	pass
 
