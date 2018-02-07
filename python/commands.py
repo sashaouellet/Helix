@@ -53,14 +53,15 @@ def ge(seqNum, shotNum, type, name):
 	except DatabaseError:
 		return
 
-def pub(fileType='single'):
+# Element-context commands
+def pub(sequence=False):
 	element = env.element
 
 	if not element:
 		print 'Element could not be retrieved, try getting it again with "ge"'
 		return
 
-	element.versionUp(fileType.lower())
+	element.versionUp(sequence)
 
 # Debug and dev commands
 def dump(expanded=False):
@@ -121,7 +122,7 @@ def main(cmd, argv):
 
 		parser = argparse.ArgumentParser(prog='pub', description='Publish a new version of the current working element')
 
-		parser.add_argument('fileType', help='The type of file (or files) that will be published. By default, if omitted, this will be a standard single file. Specify "sequence" if you are publishing a sequence of files (image sequence, geometry cache, etc.)')
+		parser.add_argument('--sequence', action='store_true', help='Whether you are publishing a sequence of files or not. By default, if omitted, this will be a publish for a standard single file. Add this flag if you are publishing a sequence of files (image sequence, geometry cache, etc.)')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 

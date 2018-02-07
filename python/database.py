@@ -293,7 +293,7 @@ class Element(DatabaseObject):
 	EFFECT = 'effect'
 	ELEMENT_TYPES = [SET, CHARACTER, PROP, EFFECT]
 
-	def versionUp(self, fileType): # TODO: also implement rollback function
+	def versionUp(self, sequence=False): # TODO: also implement rollback function
 		workDir = self.getDiskLocation()
 		relDir = self.getDiskLocation(workDir=False)
 		versionsDir = os.path.join(relDir, '.versions')
@@ -306,7 +306,7 @@ class Element(DatabaseObject):
 		workDirCopy = os.path.join(workDir, '{}.{}'.format(self.get('name'), self.get('ext'))) # TODO: determine format for publish file name
 		version = self.get('version')
 
-		if fileType == 'sequence':
+		if sequence:
 			workDirCopy = os.path.join(workDir, '{}.{}.{}'.format(self.get('name'), '[0-9]' * env.FRAME_PADDING, self.get('ext')))
 			seq = glob.glob(workDirCopy)
 
@@ -322,7 +322,7 @@ class Element(DatabaseObject):
 				return
 
 			baseName, ext = os.path.splitext(fileName)
-			versionedFileName = '{baseName}.{version}.{ext}'.format(
+			versionedFileName = '{baseName}.{version}{ext}'.format(
 					baseName=baseName,
 					version='v{}'.format(str(version).zfill(env.VERSION_PADDING)),
 					ext=ext
@@ -331,7 +331,11 @@ class Element(DatabaseObject):
 			versionlessFile = os.path.join(relDir, fileName)
 
 			shutil.copy(workDirCopy, versionDest)
-			os.symlink(versionDest, versionlessFile)
+
+			if os.path.exists(versionlessFile):
+				os.remove(versionlessFile)
+
+			os.link(versionDest, versionlessFile)
 
 			self.set('version', version + 1)
 
