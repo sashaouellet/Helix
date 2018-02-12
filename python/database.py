@@ -291,9 +291,17 @@ class Element(DatabaseObject):
 	CHARACTER = 'character'
 	PROP = 'prop'
 	EFFECT = 'effect'
-	ELEMENT_TYPES = [SET, CHARACTER, PROP, EFFECT]
+	COMP = 'comp'
+	CAMERA = 'camera'
+	ELEMENT_TYPES = [SET, CHARACTER, PROP, EFFECT, COMP, CAMERA]
 
-	def versionUp(self, sequence=False): # TODO: also implement rollback function
+	def clone(self, newSeq, newShot):
+		pass
+
+	def rollback(self):
+		pass
+
+	def versionUp(self, sequence=False):
 		workDir = self.getDiskLocation()
 		relDir = self.getDiskLocation(workDir=False)
 		versionsDir = os.path.join(relDir, '.versions')
@@ -312,14 +320,14 @@ class Element(DatabaseObject):
 
 			if not seq:
 				print 'Could not find the expected sequence: {}'.format(os.path.join(workDir, '{}.{}.{}'.format(self.get('name'), '#' * env.FRAME_PADDING, self.get('ext'))))
-				return
+				return False
 		else:
 			fileName = os.path.split(workDirCopy)[1]
 
 			if not os.path.exists(workDirCopy):
 				# Artist hasn't made a file that matches what we expect to publish
 				print 'Could not find the expected file: {}'.format(fileName)
-				return
+				return False
 
 			baseName, ext = os.path.splitext(fileName)
 			versionedFileName = '{baseName}.{version}{ext}'.format(
@@ -338,6 +346,8 @@ class Element(DatabaseObject):
 			os.link(versionDest, versionlessFile)
 
 			self.set('version', version + 1)
+
+			return True
 
 	def getDiskLocation(self, workDir=True):
 		baseDir = env.getEnvironment('work') if workDir else env.getEnvironment('release')
@@ -358,6 +368,10 @@ class Element(DatabaseObject):
 			element = Prop()
 		elif type == Element.EFFECT:
 			element = Effect()
+		elif type == Element.COMP:
+			element = Comp()
+		elif type == Element.CAMERA:
+			element = Camera()
 		else:
 			raise ValueError('Invalid element type specified')
 
@@ -387,6 +401,12 @@ class Prop(Element):
 	pass
 
 class Effect(Element):
+	pass
+
+class Comp(Element):
+	pass
+
+class Camera(Element):
 	pass
 
 if __name__ == '__main__':
