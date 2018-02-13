@@ -105,7 +105,11 @@ class DatabaseObject(object):
 		self._data = data if data is not None else {}
 		self._data['_DBOType'] = self.__class__.__name__
 
-	def set(self, key, val):
+	def set(self, key, val, checkKey=False):
+		if checkKey and key not in self._data:
+			print 'Attribute {} doesn\'t exist'.format(key)
+			raise DatabaseError
+
 		self._data[key] = val
 
 	def get(self, key, default=None):
@@ -199,20 +203,18 @@ class Show(DatabaseObject):
 			print 'Sequence {} already exists in database'.format(num)
 
 	def getSequence(self, num):
-		return self._seqTable.get(num)
+		try:
+			return self._seqTable[num]
+		except KeyError:
+			print 'Sequence {} does not exist for {}'.format(num, self.get('name'))
+			raise DatabaseError
+
+	def getShot(self, seqNum, shotNum):
+		return self.getSequence(seqNum).getShot(shotNum)
 
 	def getElement(self, seqNum, shotNum, elementType, elementName):
 		seq = self.getSequence(seqNum)
-
-		if not seq:
-			print 'Sequence {} does not exist for {}'.format(seqNum, self.get('name'))
-			raise DatabaseError
-
 		shot = seq.getShot(shotNum)
-
-		if not shot:
-			print 'Shot {} does not exist for sequence {}'.format(shotNum, seqNum)
-			raise DatabaseError
 
 		if elementType not in Element.ELEMENT_TYPES:
 			print 'Element type specified ({}) does not exist'.format(elementType)
@@ -245,7 +247,11 @@ class Sequence(DatabaseObject):
 			print 'Shot {} already exists in database'.format(num)
 
 	def getShot(self, num):
-		return self._shotTable.get(num)
+		try:
+			return self._shotTable[num]
+		except KeyError:
+			print 'Shot {} does not exist for sequence {}'.format(num, self.get('num'))
+			raise DatabaseError
 
 class Shot(DatabaseObject):
 	def __init__(self, data=None):
@@ -261,30 +267,36 @@ class Shot(DatabaseObject):
 		elements = self._data.get('elements', {})
 
 		# Translate them into the element table
-		for type, elList in elements.iteritems():
+		for elType, elList in elements.iteritems():
 			for el in elList:
 				name = el.get('name') # TODO: sanitize data
 
-				self._elementTable[type][name] = el
+				self._elementTable[elType][name] = el
 
 	def translateTable(self):
 		if not self._data.get('elements'):
 			self._data['elements'] = {}
 
-		for type, nameDict in self._elementTable.iteritems():
-			self._data['elements'][type] = nameDict.values()
+		for elType, nameDict in self._elementTable.iteritems():
+			self._data['elements'][elType] = nameDict.values()
 
 	def addElement(self, el, force=False):
 		name = el.get('name')
-		type = el.get('type')
+		elType = el.get('type')
 
-		if name not in self._elementTable[type] or force:
-			self._elementTable[type][name] = el
+		if name not in self._elementTable[elType] or force:
+			self._elementTable[elType][name] = el
 		else:
-			print 'Element {} ({}) already exists in database'.format(name, type)
+			print 'Element {} ({}) already exists in database'.format(name, elType)
 
-	def getElement(self, type, name):
-		return self._elementTable[type].get(name)
+	def getElement(self, elType, name):
+		return self._elementTable[elType].get(name)
+
+	def getElements(self):
+		pass
+
+	def destroyElement(self, elType, name):
+		self._elementTable[elType].pop(name)
 
 class Element(DatabaseObject):
 	SET = 'set'
@@ -308,8 +320,6 @@ class Element(DatabaseObject):
 
 		if not os.path.exists(versionsDir):
 			os.makedirs(versionsDir)
-
-		# TODO: Is 'ext' determined by project manager? Does the artist set the ext they will be handing off?
 
 		workDirCopy = os.path.join(workDir, '{}.{}'.format(self.get('name'), self.get('ext'))) # TODO: determine format for publish file name
 		version = self.get('version')
@@ -345,6 +355,12 @@ class Element(DatabaseObject):
 
 			os.link(versionDest, versionlessFile)
 
+			# TODO: make versionless and versionDest read-only?
+
+			#from stat import S_IREAD, S_IRGRP, S_SIROTH
+			#os.chmod(versionDest, S_IREAD|S_IRGRP|S_SIROTH)
+			#os.chmod(versionlessFile, S_IREAD|S_IRGRP|S_SIROTH)
+
 			self.set('version', version + 1)
 
 			return True
@@ -357,20 +373,20 @@ class Element(DatabaseObject):
 		return os.path.join(baseDir, show.get('dirName'), fileutils.formatShotDir(seq, shot), self.get('type'), self.get('name'))
 
 	@staticmethod
-	def factory(seqNum, shotNum, type, name):
+	def factory(seqNum, shotNum, elType, name):
 		element = None
 
-		if type == Element.SET:
+		if elType == Element.SET:
 			element = Set()
-		elif type == Element.CHARACTER:
+		elif elType == Element.CHARACTER:
 			element = Character()
-		elif type == Element.PROP:
+		elif elType == Element.PROP:
 			element = Prop()
-		elif type == Element.EFFECT:
+		elif elType == Element.EFFECT:
 			element = Effect()
-		elif type == Element.COMP:
+		elif elType == Element.COMP:
 			element = Comp()
-		elif type == Element.CAMERA:
+		elif elType == Element.CAMERA:
 			element = Camera()
 		else:
 			raise ValueError('Invalid element type specified')
@@ -378,18 +394,19 @@ class Element(DatabaseObject):
 		user, time = env.getCreationInfo()
 
 		element.set('name', name)
-		element.set('type', type)
+		element.set('type', elType)
 		element.set('author', user)
 		element.set('creation', time)
 		element.set('version', 1)
 		element.set('parent', '{}/{}'.format(seqNum, shotNum))
 
-		os.makedirs(element.getDiskLocation())
+		if not os.path.exists(element.getDiskLocation()):
+			os.makedirs(element.getDiskLocation())
 
 		return element
 
 	def __repr__(self):
-		return '{} in sequence {} shot {}'.format(self.get('name'), *self.get('parent').split('/'))
+		return '{} {} in sequence {} shot {}'.format(type(self).__name__.upper(), self.get('name'), *self.get('parent').split('/'))
 
 class Set(Element):
 	pass
@@ -410,4 +427,9 @@ class Camera(Element):
 	pass
 
 if __name__ == '__main__':
+	dbLoc = env.getEnvironment('db')
+	db = Database(dbLoc)
+	env.show = db.getShow('wblock')
 	e = Element.factory('100', '1', 'prop', 'foo')
+
+	print e
