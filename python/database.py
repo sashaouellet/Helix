@@ -379,7 +379,11 @@ class Element(DatabaseObject):
 			#os.chmod(versionDest, S_IREAD|S_IRGRP|S_SIROTH)
 			#os.chmod(versionlessFile, S_IREAD|S_IRGRP|S_SIROTH)
 
-			self.set('version', version + 1)
+			versionInfo = self.get('versionInfo', {})
+			versionInfo[version] = '{}/{}'.format(*env.getCreationInfo())
+
+			self.set('version', int(version) + 1)
+			self.set('versionInfo', versionInfo)
 
 			return True
 
