@@ -63,6 +63,9 @@ class Database(object):
 
 		return None
 
+	def getShows(self):
+		return self._showTable.values()
+
 	def addShow(self, show, force=False):
 		showName = show.get('name').lower()
 
@@ -209,6 +212,9 @@ class Show(DatabaseObject):
 			print 'Sequence {} does not exist for {}'.format(num, self.get('name'))
 			raise DatabaseError
 
+	def getSequences(self):
+		return self._seqTable.values()
+
 	def getShot(self, seqNum, shotNum):
 		return self.getSequence(seqNum).getShot(shotNum)
 
@@ -222,6 +228,9 @@ class Show(DatabaseObject):
 			raise DatabaseError
 
 		return (seq, shot, shot.getElement(elementType, elementName))
+
+	def __repr__(self):
+		return '{} ({})'.format(self.get('name', 'undefined'), ', '.join(self.get('aliases', [])))
 
 class Sequence(DatabaseObject):
 	def __init__(self, data=None):
@@ -252,6 +261,12 @@ class Sequence(DatabaseObject):
 		except KeyError:
 			print 'Shot {} does not exist for sequence {}'.format(num, self.get('num'))
 			raise DatabaseError
+
+	def getShots(self):
+		return self._shotTable.values()
+
+	def __repr__(self):
+		return 'Sequence {}'.format(self.get('num', -1))
 
 class Shot(DatabaseObject):
 	def __init__(self, data=None):
@@ -293,10 +308,13 @@ class Shot(DatabaseObject):
 		return self._elementTable[elType].get(name)
 
 	def getElements(self):
-		pass
+		return [el for nested in self._elementTable.values() for el in nested.values()]
 
 	def destroyElement(self, elType, name):
 		self._elementTable[elType].pop(name)
+
+	def __repr__(self):
+		return 'Shot {}'.format(self.get('num', -1))
 
 class Element(DatabaseObject):
 	SET = 'set'
@@ -406,7 +424,7 @@ class Element(DatabaseObject):
 		return element
 
 	def __repr__(self):
-		return '{} {} in sequence {} shot {}'.format(type(self).__name__.upper(), self.get('name'), *self.get('parent').split('/'))
+		return '{} {} in sequence {} shot {}'.format(type(self).__name__.upper(), self.get('name', 'undefined'), *self.get('parent', '-1/-1').split('/'))
 
 class Set(Element):
 	pass
