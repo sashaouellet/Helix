@@ -98,7 +98,6 @@ def shots(seqNum):
 		return
 
 def elements(seq, shot, elType=None):
-	print seq, shot
 	try:
 		els = []
 		if seq == -1:
@@ -136,6 +135,7 @@ def rme(seqNum, shotNum, elType, name):
 			return
 
 		shot.destroyElement(elType, name)
+		db.save()
 
 	except DatabaseError:
 		return
@@ -267,7 +267,7 @@ def main(cmd, argv):
 
 		parser.add_argument('seqNum', help='The sequence number')
 		parser.add_argument('shotNum', help='The shot number')
-		parser.add_argument('type', help='The type of element')
+		parser.add_argument('elType', help='The type of element')
 		parser.add_argument('name', help='The name of the element')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
