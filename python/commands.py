@@ -286,6 +286,9 @@ def main(cmd, argv):
 			return
 
 		print element
+	elif cmd == 'helix':
+		print argv
+		main(argv[0], argv[1:])
 	elif cmd == 'help' or cmd == 'h' or cmd == '?':
 		pass # TODO: implement help output
 
@@ -311,24 +314,33 @@ def exit():
 	db.save()
 	sys.exit(0)
 
+def handleInput(line):
+	cmds = line.split('|')
+
+	for c in cmds:
+		argv = c.split()
+
+		if not argv:
+			exit()
+
+		cmd = argv[0]
+
+		try:
+			main(cmd, argv[1:])
+		except SystemExit as e:
+			# I really don't like this, but not sure how to handle
+			# the exception argparse raises when typing an invalid command
+			pass
+
 if __name__ == '__main__':
+	if len(sys.argv) > 2:
+		handleInput(' '.join(sys.argv[2:]))
 	try:
 		while True:
 			print '\r[HELIX] ',
 			line = sys.stdin.readline()
 
-			argv = line.split()
+			handleInput(line)
 
-			if not argv:
-				exit()
-
-			cmd = argv[0]
-
-			try:
-				main(cmd, argv[1:])
-			except SystemExit as e:
-				# I really don't like this, but not sure how to handle
-				# the exception argparse raises when typing an invalid command
-				pass
 	except KeyboardInterrupt:
 		exit()
