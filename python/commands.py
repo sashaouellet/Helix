@@ -39,7 +39,7 @@ def mke(seqNum, shotNum, elType, name):
 	except DatabaseError:
 		return
 
-def ge(seqNum, shotNum, elType, name):
+def get(elType, name, seqNum, shotNum):
 	try:
 		seq, shot, element = env.show.getElement(seqNum, shotNum, elType.lower(), name)
 
@@ -61,8 +61,24 @@ def pub(sequence=False):
 		print 'Element could not be retrieved, try getting it again with "ge"'
 		return
 
-	if element.versionUp(sequence):
-		print 'Published new version: {}'.format(int(element.get('version')) - 1)
+	newVersion = element.versionUp(sequence)
+
+	if newVersion:
+		print 'Published new version: {}'.format(newVersion)
+		db.save()
+
+def roll(version=None):
+	element = env.element
+
+	if not element:
+		print 'Element could not be retrieved, try getting it again with "ge"'
+		return
+
+	newVersion = element.rollback(version=version)
+
+	if newVersion:
+		print 'Rolled back published file to version: {}'.format(newVersion)
+		db.save()
 
 def mod(attribute, value=None):
 	element = env.element
@@ -175,22 +191,22 @@ def main(cmd, argv):
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
 		mke(**args)
-	elif cmd == 'ge':
+	elif cmd == 'get':
 		# Command is irrelevant without the show context set
 		if not env.getEnvironment('show'):
 			print 'Please pop into a show first'
 			return
 
-		parser = argparse.ArgumentParser(prog='ge', description='Navigate to an already existing element')
+		parser = argparse.ArgumentParser(prog='get', description='Get an already existing element to work on')
 
-		parser.add_argument('seqNum', help='The sequence number')
-		parser.add_argument('shotNum', help='The shot number')
 		parser.add_argument('elType', help='The type of element')
 		parser.add_argument('name', help='The name of the element')
+		parser.add_argument('seqNum', help='The sequence number')
+		parser.add_argument('shotNum', help='The shot number')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
-		ge(**args)
+		get(**args)
 	elif cmd == 'pub':
 		# Cannot publish if element hasn't been retrieved to work on yet
 		if not env.getEnvironment('element'):
@@ -204,6 +220,19 @@ def main(cmd, argv):
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
 		pub(**args)
+	elif cmd == 'roll':
+		# Cannot publish if element hasn't been retrieved to work on yet
+		if not env.getEnvironment('element'):
+			print 'Please get an element to work on first'
+			return
+
+		parser = argparse.ArgumentParser(prog='roll', description='Rolls back the current element\'s published file to the previous version, or a specific one if specified.')
+
+		parser.add_argument('--version', '-v', default=None, help='Specify a specific version to rollback to.')
+
+		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
+
+		roll(**args)
 	elif cmd == 'mod':
 		# Cannot publish if element hasn't been retrieved to work on yet
 		if not env.getEnvironment('element'):
@@ -286,9 +315,6 @@ def main(cmd, argv):
 			return
 
 		print element
-	elif cmd == 'helix':
-		print argv
-		main(argv[0], argv[1:])
 	elif cmd == 'help' or cmd == 'h' or cmd == '?':
 		pass # TODO: implement help output
 
