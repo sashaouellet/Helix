@@ -328,18 +328,64 @@ class Element(DatabaseObject):
 	def clone(self, newSeq, newShot):
 		pass
 
-	def rollback(self):
-		pass
+	def getFileName(self): # TODO: determine format for publish file name
+		return '{}.{}'.format(self.get('name'), self.get('ext'))
+
+	def getVersionedFileName(self, versionNum=None):
+		baseName, ext = os.path.splitext(self.getFileName())
+		version = self.get('version') if not versionNum else versionNum
+
+		return '{baseName}.{version}{ext}'.format(
+				baseName=baseName,
+				version='v{}'.format(str(version).zfill(env.VERSION_PADDING)),
+				ext=ext
+			)
+
+	def rollback(self, version=None):
+		relDir = self.getDiskLocation(workDir=False)
+		versionsDir = os.path.join(relDir, '.versions')
+		baseName, ext = os.path.splitext(self.getFileName())
+		currVersion = self.get('pubVersion')
+		currVersionFile = os.path.join(versionsDir, self.getVersionedFileName(versionNum=currVersion))
+		prevVersion = int(currVersion) - 1 if not version else version
+
+		if prevVersion < 1:
+			print 'Cannot rollback prior to version 1'
+			return False
+
+		if not os.path.exists(currVersionFile):
+			print 'Current version file is missing: {}'.format(currVersionFile)
+			return False
+
+		prevVersionFile = os.path.join(versionsDir, self.getVersionedFileName(versionNum=prevVersion))
+
+		if not os.path.exists(prevVersionFile):
+			print 'Rollback failed. Previous version file is missing: {}'.format(prevVersionFile)
+			return False
+
+		versionlessFile = os.path.join(relDir, self.getFileName())
+
+		if os.path.exists(versionlessFile):
+			os.remove(versionlessFile)
+
+		os.link(prevVersionFile, versionlessFile)
+		self.set('pubVersion', prevVersion)
+
+		return prevVersion
 
 	def versionUp(self, sequence=False):
 		workDir = self.getDiskLocation()
 		relDir = self.getDiskLocation(workDir=False)
 		versionsDir = os.path.join(relDir, '.versions')
 
+		if not self.get('ext'):
+			print 'Please set the expected extension first using "mod ext VALUE"'
+			return False
+
 		if not os.path.exists(versionsDir):
 			os.makedirs(versionsDir)
 
-		workDirCopy = os.path.join(workDir, '{}.{}'.format(self.get('name'), self.get('ext'))) # TODO: determine format for publish file name
+		workDirCopy = os.path.join(workDir, self.getFileName())
 		version = self.get('version')
 
 		if sequence:
@@ -358,11 +404,7 @@ class Element(DatabaseObject):
 				return False
 
 			baseName, ext = os.path.splitext(fileName)
-			versionedFileName = '{baseName}.{version}{ext}'.format(
-					baseName=baseName,
-					version='v{}'.format(str(version).zfill(env.VERSION_PADDING)),
-					ext=ext
-				)
+			versionedFileName = self.getVersionedFileName()
 			versionDest = os.path.join(versionsDir, versionedFileName)
 			versionlessFile = os.path.join(relDir, fileName)
 
@@ -383,9 +425,10 @@ class Element(DatabaseObject):
 			versionInfo[version] = '{}/{}'.format(*env.getCreationInfo())
 
 			self.set('version', int(version) + 1)
+			self.set('pubVersion', int(version))
 			self.set('versionInfo', versionInfo)
 
-			return True
+			return self.get('pubVersion')
 
 	def getDiskLocation(self, workDir=True):
 		baseDir = env.getEnvironment('work') if workDir else env.getEnvironment('release')
@@ -416,6 +459,7 @@ class Element(DatabaseObject):
 		user, time = env.getCreationInfo()
 
 		element.set('name', name)
+		element.set('ext', '')
 		element.set('type', elType)
 		element.set('author', user)
 		element.set('creation', time)
