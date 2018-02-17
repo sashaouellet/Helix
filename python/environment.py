@@ -1,12 +1,7 @@
 import os
+from config import GeneralConfigHandler
 
 VAR_PREFIX = 'HELIX_'
-DATE_FORMAT = '%m%d%y-%H:%M:%S' # TODO: pull from config
-VERSION_PADDING = 4 # TODO: pull from config
-FRAME_PADDING = 4 # TODO: pull from config
-
-show = None
-element = None
 
 def setEnvironment(var, value):
 	os.environ[VAR_PREFIX + var.upper()] = value
@@ -27,3 +22,26 @@ def getCreationInfo():
 	import getpass, datetime
 
 	return (getpass.getuser(), datetime.datetime.now().strftime(DATE_FORMAT))
+
+def getConfig():
+	configPath = getEnvironment('config')
+	exists = True
+
+	if not configPath:
+		print 'HELIX_CONFIG environment variable not set, defaulting configuration'
+
+		exists = False
+		configPath = os.path.join(getEnvironment('home'), 'config.ini')
+
+	return GeneralConfigHandler(*os.path.split(configPath), existingConfig=exists)
+
+cfg = getConfig()
+
+DATE_FORMAT = cfg.config.get('Formatting', 'dateformat')
+VERSION_PADDING = cfg.config.get('Formatting', 'versionpadding')
+FRAME_PADDING = cfg.config.get('Formatting', 'framepadding')
+
+print DATE_FORMAT, VERSION_PADDING, FRAME_PADDING
+
+show = None
+element = None

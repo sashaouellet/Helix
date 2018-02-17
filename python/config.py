@@ -1,15 +1,14 @@
 import ConfigParser
-import environment as env
 import os
 
 class ConfigFileHandler(object):
-	def __init__(self, fileName, dir, existingConfig=False):
-		self.fileName = fileName
+	def __init__(self, dir, fileName, existingConfig=False):
 		self.dir = dir
+		self.fileName = fileName
 
 class GeneralConfigHandler(ConfigFileHandler):
-	def __init__(self, fileName, dir, existingConfig=False):
-		super(GeneralConfigHandler, self).__init__(fileName, dir, existingConfig=False)
+	def __init__(self, dir, fileName, existingConfig=False):
+		super(GeneralConfigHandler, self).__init__(dir, fileName, existingConfig=False)
 
 		self.config = ConfigParser.ConfigParser(allow_no_value=True)
 
@@ -40,6 +39,7 @@ class GeneralConfigHandler(ConfigFileHandler):
 			self.config.write(configFile)
 
 if __name__ == '__main__':
-	config = GeneralConfigHandler('config.ini', os.path.dirname(env.getEnvironment('work')))
+	import environment as env
+	config = GeneralConfigHandler(os.path.dirname(env.getEnvironment('work')), 'config.ini')
 
 	print config.config.get('Formatting', 'framepadding')
