@@ -37,9 +37,3 @@ class GeneralConfigHandler(ConfigFileHandler):
 	def write(self):
 		with open(os.path.join(self.dir, self.fileName), 'w') as configFile:
 			self.config.write(configFile)
-
-if __name__ == '__main__':
-	import environment as env
-	config = GeneralConfigHandler(os.path.dirname(env.getEnvironment('work')), 'config.ini')
-
-	print config.config.get('Formatting', 'framepadding')

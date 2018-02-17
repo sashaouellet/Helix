@@ -41,7 +41,5 @@ DATE_FORMAT = cfg.config.get('Formatting', 'dateformat')
 VERSION_PADDING = cfg.config.get('Formatting', 'versionpadding')
 FRAME_PADDING = cfg.config.get('Formatting', 'framepadding')
 
-print DATE_FORMAT, VERSION_PADDING, FRAME_PADDING
-
 show = None
 element = None
