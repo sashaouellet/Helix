@@ -2,6 +2,15 @@ import ConfigParser
 import os
 
 class ConfigFileHandler(object):
+	_instance = None
+
+	# Singleton
+	def __new__(cls, *args, **kwargs):
+		if not cls._instance:
+			cls._instance = super(ConfigFileHandler, cls).__new__(cls, *args, **kwargs)
+
+		return cls._instance
+
 	def __init__(self, dir, fileName, existingConfig=False):
 		self.dir = dir
 		self.fileName = fileName
