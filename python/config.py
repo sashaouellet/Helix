@@ -32,6 +32,8 @@ class GeneralConfigHandler(ConfigFileHandler):
 			self.config.set('Formatting', 'VersionPadding', 4)
 			self.config.set('Formatting', '# The expected frame padding for image sequences in the system')
 			self.config.set('Formatting', 'FramePadding', 4)
+			self.config.set('Formatting', '# The number padding for sequence/shot folders')
+			self.config.set('Formatting', 'SequenceShotPadding', 4)
 
 			self.config.add_section('Permissions')
 			self.config.set('Permissions', '# Define any number of user groups, the commands that group can perform, and a list of members of that group')

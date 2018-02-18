@@ -1,6 +1,9 @@
 import os
+import environment as env
 
-PADDING = 4 # TODO pull from config file
+cfg = env.getConfig()
+
+PADDING = cfg.config.get('Formatting', 'sequenceshotpadding')
 SEQUENCE_FORMAT = 'sq{}'
 SHOT_FORMAT = 's{}'
 

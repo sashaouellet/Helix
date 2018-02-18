@@ -25,14 +25,15 @@ def getCreationInfo():
 
 def getConfig():
 	configPath = getEnvironment('config')
-	exists = True
+	exists = False
 
 	if not configPath:
 		print 'HELIX_CONFIG environment variable not set, defaulting configuration'
 
-		exists = False
 		configPath = os.path.join(getEnvironment('home'), 'config.ini')
 
+	exists = os.path.exists(configPath)
+	
 	return GeneralConfigHandler(*os.path.split(configPath), existingConfig=exists)
 
 cfg = getConfig()
