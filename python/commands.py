@@ -2,6 +2,7 @@ import sys, os
 import argparse
 import environment as env
 from database import *
+from permissions import PermissionHandler
 
 dbLoc = env.getEnvironment('db')
 
@@ -9,6 +10,7 @@ if not dbLoc:
 	raise KeyError('Database location not set in your environment')
 
 db = Database(dbLoc)
+perms = PermissionHandler()
 
 # User commands
 def pop(showName):
@@ -352,7 +354,10 @@ def handleInput(line):
 		cmd = argv[0]
 
 		try:
-			main(cmd, argv[1:])
+			if perms.canExecute(cmd):
+				main(cmd, argv[1:])
+			else:
+				print 'You don\'t have permission to do this'
 		except SystemExit as e:
 			# I really don't like this, but not sure how to handle
 			# the exception argparse raises when typing an invalid command
