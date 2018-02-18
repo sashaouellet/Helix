@@ -33,7 +33,7 @@ def getConfig():
 		configPath = os.path.join(getEnvironment('home'), 'config.ini')
 
 	exists = os.path.exists(configPath)
-	
+
 	return GeneralConfigHandler(*os.path.split(configPath), existingConfig=exists)
 
 cfg = getConfig()
