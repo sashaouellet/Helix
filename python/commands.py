@@ -27,7 +27,7 @@ def pop(showName):
 
 	print 'Set environment for {}'.format(showName)
 
-def mke(seqNum, shotNum, elType, name):
+def mke(elType, name, seqNum, shotNum):
 	try:
 		seq, shot, element = env.show.getElement(seqNum, shotNum, elType.lower(), name)
 
@@ -142,7 +142,7 @@ def elements(seq, shot, elType=None):
 	except DatabaseError:
 		return
 
-def rme(seqNum, shotNum, elType, name):
+def rme(elType, name, seqNum, shotNum):
 	elType = elType.lower()
 	# TODO: sanitize name input
 	try:
@@ -185,10 +185,10 @@ def main(cmd, argv):
 
 		parser = argparse.ArgumentParser(prog='mke', description='Make an element (Set, Character, Prop, Effect)')
 
-		parser.add_argument('seqNum', help='The sequence number')
-		parser.add_argument('shotNum', help='The shot number')
 		parser.add_argument('elType', help='The type of element (Set, Character, Prop, Effect) to make')
 		parser.add_argument('name', help='The name of the element that will be made (i.e. Table)')
+		parser.add_argument('seqNum', help='The sequence number')
+		parser.add_argument('shotNum', help='The shot number')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
@@ -296,10 +296,10 @@ def main(cmd, argv):
 
 		parser = argparse.ArgumentParser(prog='rme', description='Remove an exisiting element')
 
-		parser.add_argument('seqNum', help='The sequence number')
-		parser.add_argument('shotNum', help='The shot number')
 		parser.add_argument('elType', help='The type of element')
 		parser.add_argument('name', help='The name of the element')
+		parser.add_argument('seqNum', help='The sequence number')
+		parser.add_argument('shotNum', help='The shot number')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
