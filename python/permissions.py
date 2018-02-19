@@ -26,7 +26,7 @@ class PermissionHandler(object):
 			self.cmds = cfg.config.get('Permissions', 'defaultgroup')
 
 	def canExecute(self, cmd):
-		return cmd in self.cmds
+		return cmd in self.cmds or '*' in self.cmds
 
 	def group(self):
 		return self.group
