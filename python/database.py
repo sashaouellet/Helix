@@ -558,11 +558,39 @@ class Element(DatabaseObject):
 		If newSeq is omitted, the element is assumed to reside in the same sequence it currently is in.
 
 		Args:
+			newShot (int): The shot to clone the element into.
 		    newSeq (int, optional): The sequence to clone the element into. By default assumes the same
 		    	sequence as the element is already in.
-		    newShot (int): The shot to clone the element into.
 		"""
-		pass
+		seq, _ = self.get('parent').split('/')
+		seq = seq if not newSeq else newSeq
+		clones = self.get('clones', [])
+
+		clones.append('{}/{}'.format(seq, newShot))
+
+		self.set('clones', clones)
+
+	def rmclone(self, shot, seq=None):
+		"""Removes a clone of element that has been created earlier. All publishes created of this element
+		that are in the corresponding clone will be removed from disk.
+
+		Args:
+			shot (int): The shot of the clone to remove
+			seq (int, optional): The sequence of the clone to remove. By default, is the sequence the base
+				element is already in
+
+		Raises:
+		    DatabaseError: If a clone doesn't exist in the specified sequence/shot number
+		"""
+		seq, _ = self.get('parent').split('/')
+		seq = seq if not newSeq else newSeq
+		clones = self.get('clones', [])
+		clonePath = '{}/{}'.format(seq, shot)
+
+		try:
+			clones.remove(clonePath)
+		except ValueError: # Specified clone in shot/seq doesn't exist
+			raise DatabaseError
 
 	def getFileName(self): # TODO: determine format for publish file name
 		"""Gets the file name of the element - that is the filename that the system will look for
@@ -640,6 +668,16 @@ class Element(DatabaseObject):
 		os.link(prevVersionFile, versionlessFile)
 		self.set('pubVersion', prevVersion)
 
+		# For all clones of the element, change the link to the new version
+		for clone in self.get('clones'):
+			seq, shot = clone.split('/')
+			cloneVersion = os.path.join(self.getDiskLocation(workDir=False, seq=seq, shot=shot), fileName)
+
+			if os.path.exists(cloneVersion):
+				os.remove(cloneVersion)
+
+			os.link(prevVersionFile, cloneVersion)
+
 		return prevVersion
 
 	def versionUp(self, sequence=False):
@@ -700,6 +738,20 @@ class Element(DatabaseObject):
 
 			os.link(versionDest, versionlessFile)
 
+			# For all clones of the element, we only create a versionless file in its respective directory
+			for clone in self.get('clones'):
+				seq, shot = clone.split('/')
+				dir = self.getDiskLocation(workDir=False, seq=seq, shot=shot)
+				cloneVersion = os.path.join(dir, fileName)
+
+				if not os.path.exists(dir):
+					os.makedirs(dir)
+
+				if os.path.exists(cloneVersion):
+					os.remove(cloneVersion)
+
+				os.link(versionDest, cloneVersion)
+
 			# TODO: make versionless and versionDest read-only?
 
 			#from stat import S_IREAD, S_IRGRP, S_SIROTH
@@ -715,20 +767,26 @@ class Element(DatabaseObject):
 
 			return self.get('pubVersion')
 
-	def getDiskLocation(self, workDir=True):
+	def getDiskLocation(self, workDir=True, seq=None, shot=None):
 		"""Gets the on disk location of where this element's files are stored. If workDir is False,
 		then the release directory path is returned. By default, the work directory path is returned.
 
 		Args:
 		    workDir (bool, optional): Whether or not to retrieve the work directory path of the element.
 		    	By default, is the work directory.
+		    seq (int, optional): By default, the element's explicitly set sequence number will be used,
+				however for cloned elements this is a convenience for getting their alternate directories
+			shot (int, optional): Specify a different shot number to get the disk location of this element
+				from
 
 		Returns:
 		    str: The directory location of this element (either work or release depending on workDir)
 		"""
 		baseDir = env.getEnvironment('work') if workDir else env.getEnvironment('release')
 		show = env.show
-		seq, shot = self.get('parent').split('/')
+		currseq, currshot = self.get('parent').split('/')
+		seq = currseq if not seq else seq
+		shot = currshot if not shot else shot
 
 		return os.path.join(baseDir, show.get('dirName'), fileutils.formatShotDir(seq, shot), self.get('type'), self.get('name'))
 

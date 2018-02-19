@@ -101,6 +101,39 @@ def mod(attribute, value=None):
 	else:
 		print element.get(attribute)
 
+def clone(shot, seq=None):
+	element = env.element
+
+	if not element:
+		print 'Element could not be retrieved, try getting it again with "ge"'
+		return
+
+	element.clone(shot, seq)
+
+	seq = seq if seq else element.get('parent').split('/')[0]
+
+	print 'Cloned to shot {} sequence {}'.format(shot, seq)
+
+	db.save()
+
+def rmclone(shot, seq=None):
+	element = env.element
+
+	if not element:
+		print 'Element could not be retrieved, try getting it again with "ge"'
+		return
+
+	seq = seq if seq else element.get('parent').split('/')[0]
+
+	try:
+		element.rmclone(shot, seq)
+
+		print 'Removed clone from shot {} sequence {}'.format(shot, seq)
+
+		db.save()
+	except DatabaseError:
+		print 'Element clone for shot {} sequence {} does\'t exist'
+
 def shows():
 	print '\n'.join([str(s) for s in db.getShows()])
 
@@ -249,6 +282,20 @@ def main(cmd, argv):
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
 		mod(**args)
+	elif cmd == 'clone':
+		# Cannot publish if element hasn't been retrieved to work on yet
+		if not env.getEnvironment('element'):
+			print 'Please get an element to work on first'
+			return
+
+		parser = argparse.ArgumentParser(prog='clone', description='Clones the given element to the specified sequence/shot so that it can exist across multiple sequence/shots')
+
+		parser.add_argument('shot', help='The shot number to clone to')
+		parser.add_argument('--seq', '-sq', help='The sequence number to clone to. By default will use the current sequence this element is in.', default=None)
+
+		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
+
+		clone(**args)
 	elif cmd == 'els' or cmd == 'elements':
 		if not env.getEnvironment('show'):
 			print 'Please pop into a show first'
