@@ -39,8 +39,8 @@ def getConfig():
 cfg = getConfig()
 
 DATE_FORMAT = cfg.config.get('Formatting', 'dateformat')
-VERSION_PADDING = cfg.config.get('Formatting', 'versionpadding')
-FRAME_PADDING = cfg.config.get('Formatting', 'framepadding')
+VERSION_PADDING = cfg.config.getint('Formatting', 'versionpadding')
+FRAME_PADDING = cfg.config.getint('Formatting', 'framepadding')
 
 show = None
 element = None

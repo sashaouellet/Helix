@@ -3,7 +3,7 @@ import environment as env
 
 cfg = env.getConfig()
 
-PADDING = cfg.config.get('Formatting', 'sequenceshotpadding')
+PADDING = cfg.config.getint('Formatting', 'sequenceshotpadding')
 SEQUENCE_FORMAT = 'sq{}'
 SHOT_FORMAT = 's{}'
 
