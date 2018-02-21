@@ -8,7 +8,7 @@ __version__ = 1.0.0
 __date__    = 02/18/18
 """
 import json
-import os, sys, shutil, glob
+import os, sys, shutil, glob, datetime
 import environment as env
 import fileutils
 
@@ -515,6 +515,32 @@ class Shot(DatabaseObject):
 		"""
 		return [el for nested in self._elementTable.values() for el in nested.values()]
 
+	def getElementsByType(self, elType=None):
+		"""Retrieves a list of elements of the given type. If elType is not specified, all
+		types are retrieved.
+
+		Args:
+		    elType (str | list | tuple, optional): The element type(s) to retrieve. By default retrieves all
+		    	elements
+		"""
+		if isinstance(elType, str):
+			elType = [elType]
+
+		return [e for e in self.getElements() if e.get('type', '') in elType]
+
+	def getElementsByVersion(self, version=None):
+		"""Retrieves a list of elements that match the given version(s). If version is not
+		specified, all elements are retrieved.
+
+		Args:
+		    version (int str | list | tuple, optional): The version(s) to retrieve. By default
+		    	retrieves all elements.
+		"""
+		if type(version) in (str, int):
+			version = [int(version)]
+
+		return [e for e in self.getElements() if e.get('pubVersion', -1) in version]
+
 	def destroyElement(self, elType, name):
 		"""Removes the element of the given type and name from the element table
 
@@ -766,6 +792,21 @@ class Element(DatabaseObject):
 			self.set('versionInfo', versionInfo)
 
 			return self.get('pubVersion')
+
+	def isMoreRecent(self, date):
+		"""Given a particular date, determines if this element's currently published version is
+		time stamped after the date.
+
+		Args:
+		    date (str): Date to compare against. Should be formatted as %m/%d/%y i.e. 02/20/18
+		"""
+
+		date = datetime.datetime.strptime(date, '%m/%d/%y')
+		pubVersionNum = self.get('pubVersion')
+		pubDate = self.get('versionInfo')[pubVersionNum].split('/')[1]
+		pubDate = datetime.datetime.strptime(pubDate, env.DATE_FORMAT)
+
+		return pubDate >= date
 
 	def getDiskLocation(self, workDir=True, seq=None, shot=None):
 		"""Gets the on disk location of where this element's files are stored. If workDir is False,
