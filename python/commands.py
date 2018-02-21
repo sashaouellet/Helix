@@ -148,7 +148,7 @@ def shots(seqNum):
 	except DatabaseError:
 		return
 
-def elements(seq, shot, elType=None):
+def elements(seq, shot, elType=None, date=None):
 	try:
 		els = []
 		if seq == -1:
@@ -170,6 +170,11 @@ def elements(seq, shot, elType=None):
 		if elType:
 			elType = elType.lower()
 			els = [e for e in els if e.get('type') == elType]
+
+		if date:
+			els = [e for e in els if e.isMoreRecent(date)]
+
+		# TODO sort by pubVersion
 
 		print '\n'.join([str(el) for el in els])
 	except DatabaseError:
@@ -296,6 +301,20 @@ def main(cmd, argv):
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
 		clone(**args)
+	elif cmd == 'rmclone':
+		# Cannot publish if element hasn't been retrieved to work on yet
+		if not env.getEnvironment('element'):
+			print 'Please get an element to work on first'
+			return
+
+		parser = argparse.ArgumentParser(prog='rmclone', description='Removes a previously made clone of the current element')
+
+		parser.add_argument('shot', help='The shot number of the clone to remove')
+		parser.add_argument('--seq', '-sq', help='The sequence number of the clone to remove. By default will use the current sequence this element is in.', default=None)
+
+		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
+
+		rmclone(**args)
 	elif cmd == 'els' or cmd == 'elements':
 		if not env.getEnvironment('show'):
 			print 'Please pop into a show first'
