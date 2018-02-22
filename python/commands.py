@@ -27,23 +27,23 @@ def pop(showName):
 
 	print 'Set environment for {}'.format(showName)
 
-def mke(elType, name, seqNum, shotNum):
+def mke(elType, name):
 	try:
-		seq, shot, element = env.show.getElement(seqNum, shotNum, elType.lower(), name)
+		element = env.show.getElement(elType.lower(), name) # TODO sanitize name
 
 		if element:
 			print 'Element already exists (did you mean to use "ge"?)'
 			return
 
-		shot.addElement(Element.factory(seqNum, shotNum, elType.lower(), name))
+		env.show.addElement(Element.factory(elType.lower(), name))
 		db.save()
 
 	except DatabaseError:
 		return
 
-def get(elType, name, seqNum, shotNum):
+def get(elType, name, sequence=None, shot=None):
 	try:
-		seq, shot, element = env.show.getElement(seqNum, shotNum, elType.lower(), name)
+		element = env.show.getElement(elType.lower(), name, sequence, shot)
 
 		if not element:
 			print 'Element doesn\'t exist (Check for typos in the name, or make a new element using "mke")'
@@ -52,17 +52,14 @@ def get(elType, name, seqNum, shotNum):
 		env.setEnvironment('element', element.getDiskLocation())
 		env.element = element
 
+		print 'Working on {}'.format(element)
+
 	except DatabaseError:
 		return
 
 # Element-context commands
 def pub(sequence=False):
 	element = env.element
-
-	if not element:
-		print 'Element could not be retrieved, try getting it again with "ge"'
-		return
-
 	newVersion = element.versionUp(sequence)
 
 	if newVersion:
@@ -71,11 +68,6 @@ def pub(sequence=False):
 
 def roll(version=None):
 	element = env.element
-
-	if not element:
-		print 'Element could not be retrieved, try getting it again with "ge"'
-		return
-
 	newVersion = element.rollback(version=version)
 
 	if newVersion:
@@ -85,10 +77,6 @@ def roll(version=None):
 def mod(attribute, value=None):
 	element = env.element
 
-	if not element:
-		print 'Element could not be retrieved, try getting it again with "ge"'
-		return
-
 	if value:
 		try:
 			element.set(attribute, value, checkKey=True)
@@ -97,42 +85,52 @@ def mod(attribute, value=None):
 			print 'Set {} to {}'.format(attribute, value)
 		except DatabaseError:
 			return
-
 	else:
 		print element.get(attribute)
 
-def clone(shot, seq=None):
-	element = env.element
+def override(sequence=None, shot=None):
+	if sequence and shot:
+		try:
+			seq, s = env.show.getShot(sequence, shot)
 
-	if not element:
-		print 'Element could not be retrieved, try getting it again with "ge"'
-		return
+			if env.element.makeOverride(seq, s):
+				print 'Created override for sequence {} shot {}'.format(sequence, shot)
+				db.save()
+			else:
+				print 'Override creation failed'
+		except DatabaseError:
+			return
+	elif sequence:
+		try:
+			seq = env.show.getSequence(sequence)
 
-	element.clone(shot, seq)
+			if env.element.makeOverride(seq):
+				print 'Created override for sequence {}'.format(sequence)
+				db.save()
+			else:
+				print 'Override creation failed'
+		except DatabaseError:
+			return
+	else:
+		# User is looking for overrides of the current element
+		try:
+			overrides = env.element.getOverrides()
 
-	seq = seq if seq else element.get('parent').split('/')[0]
+			print 'Sequence overrides:'
 
-	print 'Cloned to shot {} sequence {}'.format(shot, seq)
+			if overrides[0]:
+				print '\n'.join([str(s) for s in overrides[0]])
+			else:
+				print 'None'
 
-	db.save()
+			print 'Shot overrides:'
 
-def rmclone(shot, seq=None):
-	element = env.element
-
-	if not element:
-		print 'Element could not be retrieved, try getting it again with "ge"'
-		return
-
-	seq = seq if seq else element.get('parent').split('/')[0]
-
-	try:
-		element.rmclone(shot, seq)
-
-		print 'Removed clone from shot {} sequence {}'.format(shot, seq)
-
-		db.save()
-	except DatabaseError:
-		print 'Element clone for shot {} sequence {} does\'t exist'
+			if overrides[1]:
+				print '\n'.join([str(s) for s in overrides[1]])
+			else:
+				print 'None'
+		except DatabaseError:
+			return
 
 def shows():
 	print '\n'.join([str(s) for s in db.getShows()])
@@ -148,37 +146,18 @@ def shots(seqNum):
 	except DatabaseError:
 		return
 
-def elements(seq, shot, elType=None, date=None):
-	try:
-		els = []
-		if seq == -1:
-			seqs = env.show.getSequences()
-			for s in [s for sq in seqs for s in sq.getShots()]:
-				if shot != -1 and s.get('num') != shot:
-					continue
+def elements(elType=None, date=None):
+	if elType:
+		elType = elType.split(',')
 
-				els.extend(s.getElements())
+	els = env.show.getElements(types=elType)
 
-		elif shot == -1:
-			for s in env.show.getSequence(seq).getShots():
-				els.extend(s.getElements())
-		else:
-			s = env.show.getShot(seq, shot)
+	if date:
+		els = [e for e in els if e.isMoreRecent(date)]
 
-			els.extend(s.getElements())
+	# TODO sort by pubVersion
 
-		if elType:
-			elType = elType.lower()
-			els = [e for e in els if e.get('type') == elType]
-
-		if date:
-			els = [e for e in els if e.isMoreRecent(date)]
-
-		# TODO sort by pubVersion
-
-		print '\n'.join([str(el) for el in els])
-	except DatabaseError:
-		return
+	print '\n'.join([str(el) for el in els])
 
 def rme(elType, name, seqNum, shotNum):
 	elType = elType.lower()
@@ -215,18 +194,34 @@ def main(cmd, argv):
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
 		pop(**args)
+	elif cmd == 'mkshow':
+		# TODO: implement
+		pass
+	elif cmd == 'rmshow':
+		# TODO: implement
+		pass
+	elif cmd == 'mkseq':
+		# TODO: implement
+		pass
+	elif cmd == 'rmseq':
+		# TODO: implement
+		pass
+	elif cmd == 'mkshot':
+		# TODO: implement
+		pass
+	elif cmd == 'rmshot':
+		# TODO: implement
+		pass
 	elif cmd == 'mke':
 		# Command is irrelevant without the show context set
 		if not env.getEnvironment('show'):
 			print 'Please pop into a show first'
 			return
 
-		parser = argparse.ArgumentParser(prog='mke', description='Make an element (Set, Character, Prop, Effect)')
+		parser = argparse.ArgumentParser(prog='mke', description='Make an element (Set, Character, Prop, Effect, etc.)')
 
-		parser.add_argument('elType', help='The type of element (Set, Character, Prop, Effect) to make')
+		parser.add_argument('elType', help='The type of element (Set, Character, Prop, Effect, etc.) to make')
 		parser.add_argument('name', help='The name of the element that will be made (i.e. Table)')
-		parser.add_argument('seqNum', help='The sequence number')
-		parser.add_argument('shotNum', help='The shot number')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
@@ -241,8 +236,8 @@ def main(cmd, argv):
 
 		parser.add_argument('elType', help='The type of element')
 		parser.add_argument('name', help='The name of the element')
-		parser.add_argument('seqNum', help='The sequence number')
-		parser.add_argument('shotNum', help='The shot number')
+		parser.add_argument('--sequence', '-sq', default=None, help='The sequence number')
+		parser.add_argument('--shot', '-s', default=None, help='The shot number')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
@@ -261,7 +256,6 @@ def main(cmd, argv):
 
 		pub(**args)
 	elif cmd == 'roll':
-		# Cannot publish if element hasn't been retrieved to work on yet
 		if not env.getEnvironment('element'):
 			print 'Please get an element to work on first'
 			return
@@ -274,7 +268,6 @@ def main(cmd, argv):
 
 		roll(**args)
 	elif cmd == 'mod':
-		# Cannot publish if element hasn't been retrieved to work on yet
 		if not env.getEnvironment('element'):
 			print 'Please get an element to work on first'
 			return
@@ -287,44 +280,27 @@ def main(cmd, argv):
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
 		mod(**args)
-	elif cmd == 'clone':
-		# Cannot publish if element hasn't been retrieved to work on yet
+	elif cmd == 'override':
 		if not env.getEnvironment('element'):
 			print 'Please get an element to work on first'
 			return
 
-		parser = argparse.ArgumentParser(prog='clone', description='Clones the given element to the specified sequence/shot so that it can exist across multiple sequence/shots')
+		parser = argparse.ArgumentParser(prog='override', description='Override the current element for work in a different sequence or shot. If both sequence and shot are omitted, prints the current overrides instead. By omitting shot, the element can be overridden for a sequence in general.')
 
-		parser.add_argument('shot', help='The shot number to clone to')
-		parser.add_argument('--seq', '-sq', help='The sequence number to clone to. By default will use the current sequence this element is in.', default=None)
-
-		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
-
-		clone(**args)
-	elif cmd == 'rmclone':
-		# Cannot publish if element hasn't been retrieved to work on yet
-		if not env.getEnvironment('element'):
-			print 'Please get an element to work on first'
-			return
-
-		parser = argparse.ArgumentParser(prog='rmclone', description='Removes a previously made clone of the current element')
-
-		parser.add_argument('shot', help='The shot number of the clone to remove')
-		parser.add_argument('--seq', '-sq', help='The sequence number of the clone to remove. By default will use the current sequence this element is in.', default=None)
+		parser.add_argument('--sequence', '-sq', default=None, help='The sequence number to override the element into')
+		parser.add_argument('--shot', '-s', default=None, help='The shot number to override the element into.')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
-		rmclone(**args)
+		override(**args)
 	elif cmd == 'els' or cmd == 'elements':
 		if not env.getEnvironment('show'):
 			print 'Please pop into a show first'
 			return
 
-		parser = argparse.ArgumentParser(prog='elements', description='List all elements for the current show, given a sequence and shot number.')
+		parser = argparse.ArgumentParser(prog='elements', description='List all elements for the current show')
 
-		parser.add_argument('--seq', '-sq', help='The sequence number', default=-1)
-		parser.add_argument('--shot', '-s', help='The shot number', default=-1)
-		parser.add_argument('elType', help='The type of element to filter to list by', default=None, nargs='?')
+		parser.add_argument('elType', help='A comma separated list of elements to filter by', default=None, nargs='?')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 

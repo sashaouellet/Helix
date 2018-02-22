@@ -8,7 +8,7 @@ __version__ = 1.0.0
 __date__    = 02/18/18
 """
 import json
-import os, sys, shutil, glob, datetime
+import os, sys, shutil, glob, datetime, copy
 import environment as env
 import fileutils
 
@@ -150,7 +150,7 @@ class DatabaseObject(object):
 	"""
 
 	def __init__(self, data=None):
-		self._data = data if data is not None else {}
+		self._data = copy.deepcopy(data) if data is not None else {}
 		self._data['_DBOType'] = self.__class__.__name__
 
 	def set(self, key, val, checkKey=False):
@@ -270,7 +270,149 @@ class DatabaseObject(object):
 			else:
 				raise ValueError('Invalid type to decode: {}'.format(clazz))
 
-class Show(DatabaseObject):
+class ElementContainer(DatabaseObject):
+
+	"""Represents a particular part of a show (or the show itself) that is parent to any number of elements.
+
+	ElementContainers should be able to translate their data dict into the expected _elementTable dict which
+	keys element types and names to their respective elements for faster lookups. Additionally, the inverse
+	translation should also take place via overloading DatabaseObject.translateTable()
+	"""
+
+	def __init__(self, data=None):
+		super(ElementContainer, self).__init__(data)
+
+		self._elementTable = {}
+
+		# Populate element table with empty dicts for each element type
+		for elType in Element.ELEMENT_TYPES:
+			self._elementTable[elType] = {}
+
+		# Get elements from shot database record, defaults to empty
+		elements = self._data.get('elements', {})
+
+		# Translate them into the element table
+		for elType, elList in elements.iteritems():
+			for el in elList:
+				name = el.get('name') # TODO: sanitize data
+
+				self._elementTable[elType][name] = el
+
+	def translateTable(self):
+		"""Translates the element table back into the standard data dict for JSON encoding
+		"""
+		if not self._data.get('elements'):
+			self._data['elements'] = {}
+
+		# Convert the element lookup table into the standard data dictionary to be stored on disk.
+		for elType, nameDict in self._elementTable.iteritems():
+			self._data['elements'][elType] = nameDict.values()
+
+	def addElement(self, el, force=False, makeDirs=True):
+		"""Adds the given element to the element table.
+
+		Args:
+		    el (database.Element): The element to add
+		    force (bool, optional): By default, if the given element of this specific type/name already
+		    	exists in the table, it will not be overridden. If set to True, it will be overridden.
+		    makeDirs (bool, optional): By default, adding an element to the container will create the
+				appropriate on disk folders to house it. Set to False to skip the creation.
+
+		Returns:
+			bool: Whether or not the element was successfully added. The addition will fail if the element
+				already exists and force was not set to True
+		"""
+		name = el.get('name')
+		elType = el.get('type')
+
+		if name not in self._elementTable[elType] or force:
+			self._elementTable[elType][name] = el
+
+			if makeDirs:
+				seq = self.get('seq')
+				shot = self.get('num')
+
+				if not seq:
+					# Is a sequence
+					shot = None
+					seq = self.get('num')
+
+				diskLoc = el.getDiskLocation(seq=seq, shot=shot)
+
+				if not os.path.exists(diskLoc):
+					os.makedirs(diskLoc)
+
+			return True
+		else:
+			print 'Element {} ({}) already exists in database'.format(name, elType)
+			return False
+
+	def getElement(self, elementType, elementName):
+		"""Gets the specified element type and name from this container.
+
+		Args:
+		    elementType (str): The type that this element to retrieve is (i.e. "prop", "character")
+		    elementName (str): The element's name to retrieve
+
+		Returns:
+		    database.Element: The element of the given type and name
+
+		Raises:
+		    DatabaseError: If the given elementType does not match any known element type.
+		"""
+
+		if elementType not in Element.ELEMENT_TYPES:
+			print 'Element type specified ({}) does not exist'.format(elementType)
+			print 'Must be one of: {}'.format(', '.join(Element.ELEMENT_TYPES))
+			raise DatabaseError
+
+		return self._elementTable[elementType].get(elementName)
+
+	def getElements(self, types=None):
+		"""Gets all elements in this shot
+
+		Args:
+			types (str | list, optional): The type(s) of elements to retrieve. By default, returns all elements
+
+		Returns:
+		    list: All the elements in the shot
+		"""
+		elDicts = self._elementTable.values()
+
+		if types:
+			elDicts = []
+
+			for t in types:
+				elDicts.append(self._elementTable[t])
+
+		if isinstance(types, str):
+			types = [types]
+
+		return [el for nested in elDicts for el in nested.values()]
+
+	def getElementsByVersion(self, version=None):
+		"""Retrieves a list of elements that match the given version(s). If version is not
+		specified, all elements are retrieved.
+
+		Args:
+		    version (int str | list | tuple, optional): The version(s) to retrieve. By default
+		    	retrieves all elements.
+		"""
+		if type(version) in (str, int):
+			version = [int(version)]
+
+		return [e for e in self.getElements() if e.get('pubVersion', -1) in version]
+
+	def destroyElement(self, elType, name):
+		"""Removes the element of the given type and name from the element table
+
+		Args:
+		    elType (str): The type of the element to remove (i.e. "prop", "character")
+		    name (str): The name of the element to remove
+		"""
+		self._elementTable[elType].pop(name)
+
+class Show(ElementContainer):
 
 	"""Represent a show, which houses a collection of database.Sequence as well as other show-specific parameters
 
@@ -285,15 +427,16 @@ class Show(DatabaseObject):
 		seqs = self._data.get('sequences', [])
 
 		for seq in seqs:
-			num = seq.get('num') # TODO: sanitize data
+			num = int(seq.get('num'))
 
 			self._seqTable[num] = seq
 
 	def translateTable(self):
-		"""Translates the sequence lookup table (which keys sequence number  to sequence) back into the standard
-		data table so that it can be encoded to JSON
+		"""Translates the lookup tables back into the standard data table so that it can be encoded to JSON
 		"""
 		self._data['sequences'] = self._seqTable.values()
+
+		super(Show, self).translateTable()
 
 	def addSequence(self, seq, force=False):
 		"""Adds the given database.Sequence to the sequence table.
@@ -324,7 +467,7 @@ class Show(DatabaseObject):
 		    	this show.
 		"""
 		try:
-			return self._seqTable[num]
+			return self._seqTable[int(num)]
 		except KeyError:
 			print 'Sequence {} does not exist for {}'.format(num, self.get('name'))
 			raise DatabaseError
@@ -345,18 +488,22 @@ class Show(DatabaseObject):
 		    shotNum (int): The shot number to retrieve
 
 		Returns:
-		    database.Shot: The shot with the given number in the specified sequence number
+		    tuple: A tuple of the sequence with the given number and the shot with the given number
 		"""
-		return self.getSequence(seqNum).getShot(shotNum)
+		seq = self.getSequence(seqNum)
 
-	def getElement(self, seqNum, shotNum, elementType, elementName):
-		"""Convenience function for getting a specific element within a specific shot and sequence.
+		return (seq, seq.getShot(shotNum))
+
+	def getElement(self, elementType, elementName, seqNum=None, shotNum=None):
+		"""Gets the specified element type and name from the show. If a sequence and/or shot number are specified,
+		will attempt to retrieve the overridden element from that sequence/shot (if it exists). If no override is found,
+		will just return the show-level element.
 
 		Args:
-		    seqNum (int): The sequence number to get the specified element from
-		    shotNum (int): The shot number to retrieve the specified element from
 		    elementType (str): The type that this element to retrieve is (i.e. "prop", "character")
 		    elementName (str): The element's name to retrieve
+		    seqNum (int, optional): The sequence number to get the specified element from. By default assumes the global (show-level) element
+		    shotNum (int, optional): The shot number to retrieve the specified element from. By default assumes the global (show-level) element
 
 		Returns:
 		    database.Element: The element that matches all the given parameters
@@ -364,20 +511,49 @@ class Show(DatabaseObject):
 		Raises:
 		    DatabaseError: If the given elementType does not match any known element type.
 		"""
-		seq = self.getSequence(seqNum)
-		shot = seq.getShot(shotNum)
 
 		if elementType not in Element.ELEMENT_TYPES:
 			print 'Element type specified ({}) does not exist'.format(elementType)
 			print 'Must be one of: {}'.format(', '.join(Element.ELEMENT_TYPES))
 			raise DatabaseError
 
-		return (seq, shot, shot.getElement(elementType, elementName))
+		showElement = self._elementTable[elementType].get(elementName)
+
+		if seqNum and shotNum:
+			try:
+				_, shot = self.getShot(seqNum, shotNum)
+				shotEl = shot.getElement(elementType, elementName)
+
+				if shotEl:
+					return shotEl
+				else:
+					print 'No such element in sequence {} shot {}'.format(seqNum, shotNum)
+					print 'Defaulting to show-level element'
+					return showElement
+			except DatabaseError:
+				print 'Defaulting to show-level element'
+				return showElement
+		elif seqNum:
+			try:
+				seq = self.getSequence(seqNum)
+				seqEl = seq.getElement(elementType, elementName)
+
+				if seqEl:
+					return seqEl
+				else:
+					print 'No such element in sequence {}'.format(seqNum)
+					print 'Defaulting to show-level element'
+					return showElement
+			except DatabaseError:
+				print 'Defaulting to show-level element'
+				return showElement
+
+		return showElement
 
 	def __repr__(self):
 		return '{} ({})'.format(self.get('name', 'undefined'), ', '.join(self.get('aliases', [])))
 
-class Sequence(DatabaseObject):
+class Sequence(ElementContainer):
 
 	"""Represents a collection of shots. Shots are stored in a lookup table keying their number to the actual
 	shot object.
@@ -390,14 +566,16 @@ class Sequence(DatabaseObject):
 		shots = self._data.get('shots', [])
 
 		for shot in shots:
-			num = shot.get('num') # TODO: sanitize data
+			num = int(shot.get('num'))
 
 			self._shotTable[num] = shot
 
 	def translateTable(self):
-		"""Translate the shot lookup table to the sequence's data table.
+		"""Translate the shot table back into the standard data dict.
 		"""
 		self._data['shots'] = self._shotTable.values()
+
+		super(Sequence, self).translateTable()
 
 	def addShot(self, shot, force=False):
 		"""Adds the given shot to this sequence. If it already exists, then the shot will not be added
@@ -428,7 +606,7 @@ class Sequence(DatabaseObject):
 		    DatabaseError: If the given shot number does not exist in this sequence
 		"""
 		try:
-			return self._shotTable[num]
+			return self._shotTable[int(num)]
 		except KeyError:
 			print 'Shot {} does not exist for sequence {}'.format(num, self.get('num'))
 			raise DatabaseError
@@ -444,7 +622,7 @@ class Sequence(DatabaseObject):
 	def __repr__(self):
 		return 'Sequence {}'.format(self.get('num', -1))
 
-class Shot(DatabaseObject):
+class Shot(ElementContainer):
 
 	"""Represents a collection of different types of Elements, including a particular Camera. Elements are
 	stored in a nested dictionary keyed by their type and name. To retrieve a partocular element from the
@@ -454,104 +632,11 @@ class Shot(DatabaseObject):
 	def __init__(self, data=None):
 		super(Shot, self).__init__(data)
 
-		self._elementTable = {}
-
-		# Populate element table with empty dicts for each element type
-		for elType in Element.ELEMENT_TYPES:
-			self._elementTable[elType] = {}
-
-		# Get elements from shot database record, defaults to empty
-		elements = self._data.get('elements', {})
-
-		# Translate them into the element table
-		for elType, elList in elements.iteritems():
-			for el in elList:
-				name = el.get('name') # TODO: sanitize data
-
-				self._elementTable[elType][name] = el
-
 	def translateTable(self):
-		"""Converts the element lookup table into the standard data dictionary to be stored on disk.
-		"""
-		if not self._data.get('elements'):
-			self._data['elements'] = {}
-
-		for elType, nameDict in self._elementTable.iteritems():
-			self._data['elements'][elType] = nameDict.values()
-
-	def addElement(self, el, force=False):
-		"""Adds the given element to the element table.
-
-		Args:
-		    el (database.Element): The element to add
-		    force (bool, optional): By default, if the given element of this specific type/name already
-		    	exists in the table, it will not be overridden. If set to True, it will be overridden.
-		"""
-		name = el.get('name')
-		elType = el.get('type')
-
-		if name not in self._elementTable[elType] or force:
-			self._elementTable[elType][name] = el
-		else:
-			print 'Element {} ({}) already exists in database'.format(name, elType)
-
-	def getElement(self, elType, name):
-		"""Gets the element by the given type and name.
-
-		Args:
-		    elType (str): The type of the element to retrieve (i.e. "prop", "character")
-		    name (str): The name of the element to retrieve
-
-		Returns:
-		    database.Element: The element of the given type and name, if it exists. Otherwise None.
-		"""
-		return self._elementTable[elType].get(name)
-
-	def getElements(self): # TODO allow for retrieval of elements of a certain type
-		"""Gets all elements in this shot
-
-		Returns:
-		    list: All the elements in the shot
-		"""
-		return [el for nested in self._elementTable.values() for el in nested.values()]
-
-	def getElementsByType(self, elType=None):
-		"""Retrieves a list of elements of the given type. If elType is not specified, all
-		types are retrieved.
-
-		Args:
-		    elType (str | list | tuple, optional): The element type(s) to retrieve. By default retrieves all
-		    	elements
-		"""
-		if isinstance(elType, str):
-			elType = [elType]
-
-		return [e for e in self.getElements() if e.get('type', '') in elType]
-
-	def getElementsByVersion(self, version=None):
-		"""Retrieves a list of elements that match the given version(s). If version is not
-		specified, all elements are retrieved.
-
-		Args:
-		    version (int str | list | tuple, optional): The version(s) to retrieve. By default
-		    	retrieves all elements.
-		"""
-		if type(version) in (str, int):
-			version = [int(version)]
-
-		return [e for e in self.getElements() if e.get('pubVersion', -1) in version]
-
-	def destroyElement(self, elType, name):
-		"""Removes the element of the given type and name from the element table
-
-		Args:
-		    elType (str): The type of the element to remove (i.e. "prop", "character")
-		    name (str): The name of the element to remove
-		"""
-		self._elementTable[elType].pop(name)
+		super(Shot, self).translateTable()
 
 	def __repr__(self):
-		return 'Shot {}'.format(self.get('num', -1))
+		return 'Shot {} in sequence {}'.format(self.get('num', -1), self.get('seq', -1))
 
 class Element(DatabaseObject):
 
@@ -572,51 +657,11 @@ class Element(DatabaseObject):
 	SET = 'set'
 	CHARACTER = 'character'
 	PROP = 'prop'
+	TEXTURE = 'texture'
 	EFFECT = 'effect'
 	COMP = 'comp'
 	CAMERA = 'camera'
-	ELEMENT_TYPES = [SET, CHARACTER, PROP, EFFECT, COMP, CAMERA]
-
-	def clone(self, newShot, newSeq=None):
-		"""Clones the given element to another sequence and shot. This effectively just allows
-		for an element to live across multiple parts of the show without actually being duplicated.
-
-		If newSeq is omitted, the element is assumed to reside in the same sequence it currently is in.
-
-		Args:
-			newShot (int): The shot to clone the element into.
-		    newSeq (int, optional): The sequence to clone the element into. By default assumes the same
-		    	sequence as the element is already in.
-		"""
-		seq, _ = self.get('parent').split('/')
-		seq = seq if not newSeq else newSeq
-		clones = self.get('clones', [])
-
-		clones.append('{}/{}'.format(seq, newShot))
-
-		self.set('clones', clones)
-
-	def rmclone(self, shot, seq=None):
-		"""Removes a clone of element that has been created earlier. All publishes created of this element
-		that are in the corresponding clone will be removed from disk.
-
-		Args:
-			shot (int): The shot of the clone to remove
-			seq (int, optional): The sequence of the clone to remove. By default, is the sequence the base
-				element is already in
-
-		Raises:
-		    DatabaseError: If a clone doesn't exist in the specified sequence/shot number
-		"""
-		seq, _ = self.get('parent').split('/')
-		seq = seq if not newSeq else newSeq
-		clones = self.get('clones', [])
-		clonePath = '{}/{}'.format(seq, shot)
-
-		try:
-			clones.remove(clonePath)
-		except ValueError: # Specified clone in shot/seq doesn't exist
-			raise DatabaseError
+	ELEMENT_TYPES = [SET, CHARACTER, PROP, TEXTURE, EFFECT, COMP, CAMERA]
 
 	def getFileName(self): # TODO: determine format for publish file name
 		"""Gets the file name of the element - that is the filename that the system will look for
@@ -793,6 +838,69 @@ class Element(DatabaseObject):
 
 			return self.get('pubVersion')
 
+	def makeOverride(self, seq, shot=None):
+		"""Given a particular database.Sequence and database.Shot, creates an override for this
+		element by updating the overrides list and adding the element to the respective sequence/shot.
+
+		If shot is omitted, the override is only created for the sequence
+
+		Args:
+			seq (database.Sequence): The sequence to make the override for
+			shot (database.Shot, optional): The shot in the given sequence to make the override for. By
+				default, will make the override for just the sequence given.
+
+		Returns:
+			bool: If override creation was successful
+		"""
+		if shot:
+			self.translateTable()
+
+			if shot.addElement(Element(self._data)):
+				overrides = self.get('overrides', [])
+
+				overrides.append('{}/{}'.format(seq.get('num'), shot.get('num')))
+				self.set('overrides', overrides)
+				return True
+			else:
+				return False
+		elif seq:
+			# Only sequence specified
+			self.translateTable()
+
+			if seq.addElement(Element(self._data)):
+				overrides = self.get('overrides', [])
+
+				overrides.append('{}/{}'.format(seq.get('num'), -1))
+				self.set('overrides', overrides)
+				return True
+			else:
+				return False
+		else:
+			# No sequence specified
+			raise ValueError('Invalid sequence specified')
+
+	def getOverrides(self):
+		"""Gets all the overrides of this element
+
+		Returns:
+			tuple: A tuple of the overrides, the first item is a list of database.Sequence, where
+				sequence-level overrides of this element occur, the second is a list of database.Shot,
+				where shot-level overrides of this element occur
+		"""
+		seqOverrides = []
+		shotOverrides = []
+
+		for o in self.get('overrides', []):
+			seq, shot = o.split('/')
+
+			if int(shot) == -1:
+				# Only a sequence override
+				seqOverrides.append(env.show.getSequence(seq))
+			else:
+				shotOverrides.append(env.show.getShot(seq, shot)[1])
+
+		return (seqOverrides, shotOverrides)
+
 	def isMoreRecent(self, date):
 		"""Given a particular date, determines if this element's currently published version is
 		time stamped after the date.
@@ -815,31 +923,28 @@ class Element(DatabaseObject):
 		Args:
 		    workDir (bool, optional): Whether or not to retrieve the work directory path of the element.
 		    	By default, is the work directory.
-		    seq (int, optional): By default, the element's explicitly set sequence number will be used,
-				however for cloned elements this is a convenience for getting their alternate directories
-			shot (int, optional): Specify a different shot number to get the disk location of this element
-				from
+		    seq (int, optional): The number of the specific sequence folder for this element. By default, will place
+				at the show level.
+			shot (int, optional): The number of the specific shot folder for this element. By default, will place
+				at the sequence level if seq was provided, otherwise will place at the show level.
 
 		Returns:
 		    str: The directory location of this element (either work or release depending on workDir)
 		"""
 		baseDir = env.getEnvironment('work') if workDir else env.getEnvironment('release')
 		show = env.show
-		currseq, currshot = self.get('parent').split('/')
-		seq = currseq if not seq else seq
-		shot = currshot if not shot else shot
 
-		return os.path.join(baseDir, show.get('dirName'), fileutils.formatShotDir(seq, shot), self.get('type'), self.get('name'))
+		if seq:
+			return os.path.join(baseDir, show.get('dirName'), fileutils.formatShotDir(seq, shot), self.get('type'), self.get('name'))
+
+		return os.path.join(baseDir, show.get('dirName'), self.get('type'), self.get('name'))
 
 	@staticmethod
-	def factory(seqNum, shotNum, elType, name):
-		"""Constructs an element in the given sequence and shot with the given type and name. Creation info is tagged onto
-		this element: time and user. "parent" is a path separating the sequence and shot and is used for fast lookup
-		purposes.
+	def factory(elType, name):
+		"""Constructs an element with the given type and name. Creation info is tagged onto
+		this element: time and user.
 
 		Args:
-		    seqNum (int): The sequence number of the element to make
-		    shotNum (int): The shot number of the element to make
 		    elType (str): The element type to make (i.e. "prop", "character")
 		    name (str): The name of the element to make
 
@@ -874,15 +979,11 @@ class Element(DatabaseObject):
 		element.set('author', user)
 		element.set('creation', time)
 		element.set('version', 1)
-		element.set('parent', '{}/{}'.format(seqNum, shotNum))
-
-		if not os.path.exists(element.getDiskLocation()):
-			os.makedirs(element.getDiskLocation())
 
 		return element
 
 	def __repr__(self):
-		return '{} {} in sequence {} shot {}'.format(type(self).__name__.upper(), self.get('name', 'undefined'), *self.get('parent', '-1/-1').split('/'))
+		return '{} {}'.format(type(self).__name__.upper(), self.get('name', 'undefined'))
 
 class Set(Element):
 	pass

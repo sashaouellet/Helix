@@ -7,5 +7,8 @@ PADDING = cfg.config.getint('Formatting', 'sequenceshotpadding')
 SEQUENCE_FORMAT = 'sq{}'
 SHOT_FORMAT = 's{}'
 
-def formatShotDir(seqNum, shotNum):
-	return os.path.join(SEQUENCE_FORMAT.format(str(seqNum).zfill(PADDING)), SHOT_FORMAT.format(str(shotNum).zfill(PADDING)))
+def formatShotDir(seqNum, shotNum=None):
+	if shotNum:
+		return os.path.join(SEQUENCE_FORMAT.format(str(seqNum).zfill(PADDING)), SHOT_FORMAT.format(str(shotNum).zfill(PADDING)))
+
+	return SEQUENCE_FORMAT.format(str(seqNum).zfill(PADDING))
