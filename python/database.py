@@ -8,7 +8,7 @@ __version__ = 1.0.0
 __date__    = 02/18/18
 """
 import json
-import os, sys, shutil, glob, datetime, copy
+import os, sys, shutil, glob, datetime, copy, re
 import environment as env
 import fileutils
 
@@ -109,13 +109,34 @@ class Database(object):
 		    force (bool, optional): By default, if the show exists it will not be added
 		    	to the database. If set to true, the existing show will be overidden by
 		    	the provided one.
+
+		Returns:
+			bool: Whether the show was successfully added or not
 		"""
 		showName = show.get('name').lower()
 
 		if showName not in self._showTable or force:
 			self._showTable[showName] = show
+			return True
 		else:
 			print 'Show {} already exists in database'.format(showName)
+			return False
+
+	def removeShow(self, showName, clean=False):
+		"""Removes the show with the given name from the database, if it exists.
+
+		Args:
+		    showName (str): The name of the show to remove
+		    clean (bool, optional): Whether or not to remove the files associated with this show from disk
+
+		Returns:
+		    database.Show: The removed show (if it existed), otherwise None
+		"""
+		show = self._showTable.pop(showName.lower(), None)
+
+		# TODO implement directory cleaning
+
+		return show
 
 	def save(self):
 		"""Saves the database to the JSON file at the path specified by Database._dbPath. Prior
@@ -149,9 +170,13 @@ class DatabaseObject(object):
 	indentified and then properly constructed given the rest of its data structure.
 	"""
 
-	def __init__(self, data=None):
-		self._data = copy.deepcopy(data) if data is not None else {}
+	def __init__(self, *args, **kwargs):
+		data = kwargs.pop('data', {})
+		self._data = copy.deepcopy(data)
 		self._data['_DBOType'] = self.__class__.__name__
+
+		for key, val in kwargs.iteritems():
+			self._data[key] = val
 
 	def set(self, key, val, checkKey=False):
 		"""Sets the given key to the given value. If the key doesn't exist, and checkKey is True then
@@ -266,7 +291,7 @@ class DatabaseObject(object):
 			obj = classLookup.get(clazz)
 
 			if obj:
-				return obj(DatabaseObject.decode(data))
+				return obj(data=DatabaseObject.decode(data))
 			else:
 				raise ValueError('Invalid type to decode: {}'.format(clazz))
 
@@ -279,8 +304,8 @@ class ElementContainer(DatabaseObject):
 	translation should also take place via overloading DatabaseObject.translateTable()
 	"""
 
-	def __init__(self, data=None):
-		super(ElementContainer, self).__init__(data)
+	def __init__(self, *args, **kwargs):
+		super(ElementContainer, self).__init__(*args, **kwargs)
 
 		self._elementTable = {}
 
@@ -420,8 +445,8 @@ class Show(ElementContainer):
 	lookups.
 	"""
 
-	def __init__(self, data=None, aliases=None):
-		super(Show, self).__init__(data)
+	def __init__(self, *args, **kwargs):
+		super(Show, self).__init__(*args, **kwargs)
 
 		self._seqTable = {}
 		seqs = self._data.get('sequences', [])
@@ -445,13 +470,34 @@ class Show(ElementContainer):
 		    seq (database.Sequence): The sequence to add
 		    force (bool, optional): By default, an existing sequence will not be overridden. If force is True,
 		    	an existing sequence will be replaced by the given one.
+
+		Returns:
+			bool: Whether the sequence was successfully added or not
 		"""
 		num = seq.get('num')
 
 		if num not in self._seqTable or force:
 			self._seqTable[num] = seq
+			return True
 		else:
 			print 'Sequence {} already exists in database'.format(num)
+			return False
+
+	def removeSequence(self, seqNum, clean=False):
+		"""Removes the sequence with the given number from this show, if it exists.
+
+		Args:
+		    seqNum (int | str): The number of the sequence to remove
+		    clean (bool, optional): Whether or not to remove the files associated with this show from disk
+
+		Returns:
+		    database.Sequence: The removed sequence (if it existed), otherwise None
+		"""
+		seq = self._seqTable.pop(int(seqNum), None)
+
+		# TODO implement directory cleaning
+
+		return seq
 
 	def getSequence(self, num):
 		"""Gets the sequence from the table from the specified sequence number.
@@ -550,6 +596,15 @@ class Show(ElementContainer):
 
 		return showElement
 
+	def getSafeName(self):
+		"""Constructs the "safe name" for this show, based on its actual name. The safe name
+		is free of special characters and spaces so that directories can be safely made using it.
+
+		Returns:
+		    str: The transformed name
+		"""
+		return fileutils.sanitize(fileutils.convertToCamelCase(self.get('name')))
+
 	def __repr__(self):
 		return '{} ({})'.format(self.get('name', 'undefined'), ', '.join(self.get('aliases', [])))
 
@@ -559,8 +614,8 @@ class Sequence(ElementContainer):
 	shot object.
 	"""
 
-	def __init__(self, data=None):
-		super(Sequence, self).__init__(data)
+	def __init__(self, *args, **kwargs):
+		super(Sequence, self).__init__(*args, **kwargs)
 
 		self._shotTable = {}
 		shots = self._data.get('shots', [])
@@ -585,13 +640,34 @@ class Sequence(ElementContainer):
 		    shot (database.Shot): The shot to add to this sequence
 		    force (bool, optional): By default, if the shot exists, it will not be overridden, but if set
 		    	to True, the given shot will take the place of the existing one.
+
+		Returns:
+			bool: Whether the shot was successfully added or not
 		"""
 		num = shot.get('num')
 
 		if num not in self._shotTable or force:
 			self._shotTable[num] = shot
+			return True
 		else:
 			print 'Shot {} already exists in database'.format(num)
+			return False
+
+	def removeShot(self, shotNum, clean=False):
+		"""Removes the shot with the given number from this sequence, if it exists.
+
+		Args:
+		    shotNum (int | str): The number of the shot to remove
+		    clean (bool, optional): Whether or not to remove the files associated with this shot from disk
+
+		Returns:
+		    database.Shot: The remove shot, or None if it didn't exist
+		"""
+		shot = self._shotTable.pop(int(shot), None)
+
+		# TODO implement directory cleaning
+
+		return shot
 
 	def getShot(self, num):
 		"""Gets the shot from the shot lookup table by the given number, if it exists.
@@ -629,8 +705,8 @@ class Shot(ElementContainer):
 	table, the type dictionary must be retrieved, and then the actual element by its name.
 	"""
 
-	def __init__(self, data=None):
-		super(Shot, self).__init__(data)
+	def __init__(self, *args, **kwargs):
+		super(Shot, self).__init__(*args, **kwargs)
 
 	def translateTable(self):
 		super(Shot, self).translateTable()
@@ -663,18 +739,26 @@ class Element(DatabaseObject):
 	CAMERA = 'camera'
 	ELEMENT_TYPES = [SET, CHARACTER, PROP, TEXTURE, EFFECT, COMP, CAMERA]
 
-	def getFileName(self): # TODO: determine format for publish file name
+	def getFileName(self, sequence=False): # TODO: determine format for publish file name
 		"""Gets the file name of the element - that is the filename that the system will look for
 		in the work directory when publishing.
 
 		Currently, this is just the name of the element followed by its specified extension.
 
+		Args:
+			sequence (bool, optional): By default, returns the standard file name. If true, returns
+				the sequence version of the file name, with frame padding included between the base
+				name and the extension
+
 		Returns:
 		    str: The filename of the element
 		"""
+		if sequence:
+			return '{}.{}.{}'.format(self.get('name'), '[0-9]' * env.FRAME_PADDING, self.get('ext'))
+
 		return '{}.{}'.format(self.get('name'), self.get('ext'))
 
-	def getVersionedFileName(self, versionNum=None):
+	def getVersionedFileName(self, versionNum=None, frameNum=None):
 		"""Given a version number, returns the formatted filename including the version number.
 
 		Args:
@@ -683,6 +767,8 @@ class Element(DatabaseObject):
 
 		    	The version that the artist is working on in the work directory is always 1 ahead of whatever
 		    	is published in the release directory (since they are working on a new version)
+		    frameNum (int, optional): By default, returns the standard file name. If a number is provided, the
+		    	name will be formatted with the appropriate frame padding
 
 		Returns:
 		    str: The formatted string including the given version number
@@ -690,8 +776,9 @@ class Element(DatabaseObject):
 		baseName, ext = os.path.splitext(self.getFileName())
 		version = self.get('version') if not versionNum else versionNum
 
-		return '{baseName}.{version}{ext}'.format(
+		return '{baseName}{frameNum}.{version}{ext}'.format(
 				baseName=baseName,
+				frameNum='.' + str(frameNum).zfill(env.FRAME_PADDING) if frameNum is not None else '',
 				version='v{}'.format(str(version).zfill(env.VERSION_PADDING)),
 				ext=ext
 			)
@@ -710,9 +797,13 @@ class Element(DatabaseObject):
 		Returns:
 		    bool: If the rollback succeeded or not.
 		"""
+
+		# TODO: Implement for sequence
+
 		relDir = self.getDiskLocation(workDir=False)
 		versionsDir = os.path.join(relDir, '.versions')
-		baseName, ext = os.path.splitext(self.getFileName())
+		sequence = bool(self.get('seq', False))
+		baseName, ext = os.path.splitext(self.getFileName(sequence=sequence))
 		currVersion = self.get('pubVersion')
 		currVersionFile = os.path.join(versionsDir, self.getVersionedFileName(versionNum=currVersion))
 		prevVersion = int(currVersion) - 1 if not version else version
@@ -721,37 +812,32 @@ class Element(DatabaseObject):
 			print 'Cannot rollback prior to version 1'
 			return False
 
-		if not os.path.exists(currVersionFile):
-			print 'Current version file is missing: {}'.format(currVersionFile)
-			return False
+		if sequence:
+			prevVersionFile = os.path.join(versionsDir, '{}.v{}.{}'.format(baseName, str(prevVersion).zfill(env.VERSION_PADDING), ext))
+			prevSeq = glob.glob(prevVersionFile)
 
-		prevVersionFile = os.path.join(versionsDir, self.getVersionedFileName(versionNum=prevVersion))
+			if not prevSeq:
+				print 'Rollback failed. Rollback version files are missing: {}'.format(prevVersionFile)
+				return False
 
-		if not os.path.exists(prevVersionFile):
-			print 'Rollback failed. Previous version file is missing: {}'.format(prevVersionFile)
-			return False
+			for file in prevSeq:
+				fileName = os.path.split(file)[1]
+				match = re.match(r'^.+\.(\d+)\..+$', fileName)
 
-		versionlessFile = os.path.join(relDir, self.getFileName())
+				if match:
+					pubVersion = self.publishFile(fileName, version=prevVersion, frameNum=int(match.group(1)), updateVersion=False)
+		else:
+			prevVersionFile = os.path.join(versionsDir, self.getVersionedFileName(versionNum=prevVersion))
 
-		if os.path.exists(versionlessFile):
-			os.remove(versionlessFile)
+			if not os.path.exists(prevVersionFile):
+				print 'Rollback failed. Rollback version file is missing: {}'.format(prevVersionFile)
+				return False
 
-		os.link(prevVersionFile, versionlessFile)
-		self.set('pubVersion', prevVersion)
-
-		# For all clones of the element, change the link to the new version
-		for clone in self.get('clones'):
-			seq, shot = clone.split('/')
-			cloneVersion = os.path.join(self.getDiskLocation(workDir=False, seq=seq, shot=shot), fileName)
-
-			if os.path.exists(cloneVersion):
-				os.remove(cloneVersion)
-
-			os.link(prevVersionFile, cloneVersion)
+			self.publishFile(self.getFileName(), version=prevVersion, updateVersion=False)
 
 		return prevVersion
 
-	def versionUp(self, sequence=False):
+	def versionUp(self):
 		"""Publishes the current element to the next version, copying the proper file(s) to the
 		release directory and updating the versionless file to link to this new version.
 
@@ -760,10 +846,6 @@ class Element(DatabaseObject):
 		"pubVersion" reflects what version the versionless file points to, regardless of whether it is the
 		latest version or not. When a publish is executed, this is obviously updated to the version that
 		was just published.
-
-		Args:
-		    sequence (bool, optional): If the element is publishing a sequence of files, then the publish
-		    	will move this entire sequence over to the release directory.
 
 		Returns:
 		    bool: Whether the publish action succeeded or not.
@@ -779,64 +861,87 @@ class Element(DatabaseObject):
 		if not os.path.exists(versionsDir):
 			os.makedirs(versionsDir)
 
-		workDirCopy = os.path.join(workDir, self.getFileName())
+		fileName = self.getFileName()
+		workDirCopy = os.path.join(workDir, fileName)
 		version = self.get('version')
+		sequence = bool(self.get('seq', False))
 
 		if sequence:
-			workDirCopy = os.path.join(workDir, '{}.{}.{}'.format(self.get('name'), '[0-9]' * env.FRAME_PADDING, self.get('ext')))
+			workDirCopy = os.path.join(workDir, self.getFileName(sequence=True))
 			seq = glob.glob(workDirCopy)
 
 			if not seq:
 				print 'Could not find the expected sequence: {}'.format(os.path.join(workDir, '{}.{}.{}'.format(self.get('name'), '#' * env.FRAME_PADDING, self.get('ext'))))
 				return False
+
+			pubVersion = -1
+
+			for file in seq:
+				fileName = os.path.split(file)[1]
+				match = re.match(r'^.+\.(\d+)\..+$', fileName)
+
+				if match:
+					pubVersion = self.publishFile(fileName, version=version, frameNum=int(match.group(1)))
+
+			return pubVersion
+
 		else:
-			fileName = os.path.split(workDirCopy)[1]
+			return self.publishFile(fileName)
 
-			if not os.path.exists(workDirCopy):
-				# Artist hasn't made a file that matches what we expect to publish
-				print 'Could not find the expected file: {}'.format(fileName)
-				return False
+	def publishFile(self, fileName, version=None, frameNum=None, updateVersion=True):
+		"""Given a file name of the work directory file to publish to "release", copies
+		the file to the release directory's versions folder and sets up the proper hard link.
 
-			baseName, ext = os.path.splitext(fileName)
-			versionedFileName = self.getVersionedFileName()
-			versionDest = os.path.join(versionsDir, versionedFileName)
-			versionlessFile = os.path.join(relDir, fileName)
+		Args:
+		    fileName (str): The current existing file to publish to the release directory
+		    version (int, optional): The explicit version number to publish to
+		    frameNum (int, optional): The frame number of the file to publish
+		    updateVersion (bool, optional): Whether to update the current working version or not.
+		    	By default will do so, but for rollbacks this is not necessary.
 
-			shutil.copy(workDirCopy, versionDest)
+		Returns:
+		    int: The new version number that was just published
+		"""
+		workDir = self.getDiskLocation()
+		relDir = self.getDiskLocation(workDir=False)
+		versionsDir = os.path.join(relDir, '.versions')
+		workDirCopy = os.path.join(workDir, fileName)
 
-			if os.path.exists(versionlessFile):
-				os.remove(versionlessFile)
+		if not os.path.exists(workDirCopy):
+			# Artist hasn't made a file that matches what we expect to publish
+			print 'Could not find the expected file: {}'.format(fileName)
+			return False
 
-			os.link(versionDest, versionlessFile)
+		baseName, ext = os.path.splitext(fileName)
+		versionedFileName = self.getVersionedFileName(versionNum=version, frameNum=frameNum)
+		versionDest = os.path.join(versionsDir, versionedFileName)
+		versionlessFile = os.path.join(relDir, fileName)
 
-			# For all clones of the element, we only create a versionless file in its respective directory
-			for clone in self.get('clones'):
-				seq, shot = clone.split('/')
-				dir = self.getDiskLocation(workDir=False, seq=seq, shot=shot)
-				cloneVersion = os.path.join(dir, fileName)
+		shutil.copy(workDirCopy, versionDest)
 
-				if not os.path.exists(dir):
-					os.makedirs(dir)
+		if os.path.exists(versionlessFile):
+			os.remove(versionlessFile)
 
-				if os.path.exists(cloneVersion):
-					os.remove(cloneVersion)
+		#os.link(versionDest, versionlessFile)
 
-				os.link(versionDest, cloneVersion)
+		# TODO: make versionless and versionDest read-only?
 
-			# TODO: make versionless and versionDest read-only?
+		#from stat import S_IREAD, S_IRGRP, S_SIROTH
+		#os.chmod(versionDest, S_IREAD|S_IRGRP|S_SIROTH)
+		#os.chmod(versionlessFile, S_IREAD|S_IRGRP|S_SIROTH)
 
-			#from stat import S_IREAD, S_IRGRP, S_SIROTH
-			#os.chmod(versionDest, S_IREAD|S_IRGRP|S_SIROTH)
-			#os.chmod(versionlessFile, S_IREAD|S_IRGRP|S_SIROTH)
+		version = self.get('version') if not version else version
 
+		if updateVersion:
 			versionInfo = self.get('versionInfo', {})
-			versionInfo[version] = '{}/{}'.format(*env.getCreationInfo())
+			versionInfo[version] = '{}/{}'.format(*env.getCreationInfo()) # Timestamp and user info for publish
 
 			self.set('version', int(version) + 1)
-			self.set('pubVersion', int(version))
 			self.set('versionInfo', versionInfo)
 
-			return self.get('pubVersion')
+		self.set('pubVersion', int(version))
+
+		return self.get('pubVersion')
 
 	def makeOverride(self, seq, shot=None):
 		"""Given a particular database.Sequence and database.Shot, creates an override for this
@@ -979,6 +1084,7 @@ class Element(DatabaseObject):
 		element.set('author', user)
 		element.set('creation', time)
 		element.set('version', 1)
+		element.set('seq', False)
 
 		return element
 

@@ -1,4 +1,4 @@
-import sys, os
+import sys, os, shlex
 import argparse
 import environment as env
 from database import *
@@ -13,11 +13,71 @@ db = Database(dbLoc)
 perms = PermissionHandler()
 
 # User commands
+def mkshow(showName):
+	show = Show(name=showName)
+
+	if db.addShow(show):
+		print 'Successfully created new show'
+		show.set('dirName', show.getSafeName())
+		db.save()
+
+def rmshow(showName, clean=False):
+	show = db.removeShow(showName, clean)
+
+	if not show:
+		print 'Didn\'t recognize show: {}'.format(showName)
+		return
+	else:
+		print 'Successfully removed show'
+		db.save()
+
+def mkseq(seqNum):
+	seq = Sequence(num=int(seqNum))
+
+	if env.show.addSequence(seq):
+		print 'Successfully created sequence'
+		db.save()
+
+def rmseq(seqNum, clean=False):
+	seq = env.show.removeSequence(int(seqNum), clean)
+
+	if not seq:
+		print 'Sequence {} doesn\'t exist'.format(seqNum)
+		return
+	else:
+		print 'Successfully removed sequence'
+		db.save()
+
+def mkshot(seqNum, shotNum):
+	try:
+		seq = env.show.getSequence(seqNum)
+		shot = Shot(num=int(shotNum))
+
+		if seq.addShot(shot):
+			print 'Successfully created shot'
+			db.save()
+	except DatabaseError:
+		return
+
+def rmshot(seqNum, shotNum, clean=False):
+	try:
+		seq = env.show.getSequence(seqNum)
+		shot = seq.removeShot(int(shotNum), clean)
+
+		if not shot:
+			print 'Shot {} doesn\'t exist for sequence {}'.format(shotNum, seqNum)
+			return
+		else:
+			print 'Successfully removed shot'
+			db.save()
+	except DatabaseError:
+		return
+
 def pop(showName):
 	show = db.getShow(showName)
 
 	if not show:
-		print 'Didn\'t recognize show name/alias: {}'.format(showName)
+		print 'Didn\'t recognize show: {}'.format(showName)
 		return
 
 	showName = show.get('name')
@@ -58,9 +118,9 @@ def get(elType, name, sequence=None, shot=None):
 		return
 
 # Element-context commands
-def pub(sequence=False):
+def pub():
 	element = env.element
-	newVersion = element.versionUp(sequence)
+	newVersion = element.versionUp()
 
 	if newVersion:
 		print 'Published new version: {}'.format(newVersion)
@@ -195,23 +255,74 @@ def main(cmd, argv):
 
 		pop(**args)
 	elif cmd == 'mkshow':
-		# TODO: implement
-		pass
+		parser = argparse.ArgumentParser(prog='mkshow', description='Make a new show')
+
+		parser.add_argument('showName', help='The name of the show. Surround in quotes for multi-word names.')
+
+		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
+
+		mkshow(**args)
 	elif cmd == 'rmshow':
-		# TODO: implement
-		pass
+		parser = argparse.ArgumentParser(prog='rmshow', description='Delete an existing show. Optionally also remove associated files from disk.')
+
+		parser.add_argument('showName', help='The name of the show. Surround in quotes for multi-word names.')
+		parser.add_argument('--clean', '-c', action='store_true', help='Remove associated files/directories for this show')
+
+		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
+
+		rmshow(**args)
 	elif cmd == 'mkseq':
-		# TODO: implement
-		pass
+		if not env.getEnvironment('show'):
+			print 'Please pop into a show first'
+			return
+
+		parser = argparse.ArgumentParser(prog='mkseq', description='Make a new sequence in the current show')
+
+		parser.add_argument('seqNum', help='The number of the sequence')
+
+		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
+
+		mkseq(**args)
 	elif cmd == 'rmseq':
-		# TODO: implement
-		pass
+		if not env.getEnvironment('show'):
+			print 'Please pop into a show first'
+			return
+
+		parser = argparse.ArgumentParser(prog='rmseq', description='Remove an existing sequence from the current show')
+
+		parser.add_argument('seqNum', help='The number of the sequence')
+		parser.add_argument('--clean', '-c', action='store_true', help='Remove associated files/directories for this sequence')
+
+		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
+
+		rmseq(**args)
 	elif cmd == 'mkshot':
-		# TODO: implement
-		pass
+		if not env.getEnvironment('show'):
+			print 'Please pop into a show first'
+			return
+
+		parser = argparse.ArgumentParser(prog='mkshot', description='Make a new shot in the current show for the given sequence.')
+
+		parser.add_argument('seqNum', help='The number of the sequence to make the shot in')
+		parser.add_argument('shotNum', help='The number of the shot to make')
+
+		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
+
+		mkshot(**args)
 	elif cmd == 'rmshot':
-		# TODO: implement
-		pass
+		if not env.getEnvironment('show'):
+			print 'Please pop into a show first'
+			return
+
+		parser = argparse.ArgumentParser(prog='rmshot', description='Remove an existing shot in the current show for the given sequence.')
+
+		parser.add_argument('seqNum', help='The number of the sequence to remove the shot from')
+		parser.add_argument('shotNum', help='The number of the shot to remove')
+		parser.add_argument('--clean', '-c', action='store_true', help='Remove associated files/directories for this shot')
+
+		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
+
+		rmshot(**args)
 	elif cmd == 'mke':
 		# Command is irrelevant without the show context set
 		if not env.getEnvironment('show'):
@@ -226,6 +337,19 @@ def main(cmd, argv):
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
 		mke(**args)
+	elif cmd == 'rme':
+		if not env.getEnvironment('show'):
+			print 'Please pop into a show first'
+			return
+
+		parser = argparse.ArgumentParser(prog='rme', description='Remove an exisiting element')
+
+		parser.add_argument('elType', help='The type of element')
+		parser.add_argument('name', help='The name of the element')
+
+		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
+
+		rme(**args)
 	elif cmd == 'get':
 		# Command is irrelevant without the show context set
 		if not env.getEnvironment('show'):
@@ -249,9 +373,6 @@ def main(cmd, argv):
 			return
 
 		parser = argparse.ArgumentParser(prog='pub', description='Publish a new version of the current working element')
-
-		parser.add_argument('--sequence', action='store_true', help='Whether you are publishing a sequence of files or not. By default, if omitted, this will be a publish for a standard single file. Add this flag if you are publishing a sequence of files (image sequence, geometry cache, etc.)')
-
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
 		pub(**args)
@@ -331,21 +452,6 @@ def main(cmd, argv):
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
 		shows(**args)
-	elif cmd == 'rme':
-		if not env.getEnvironment('show'):
-			print 'Please pop into a show first'
-			return
-
-		parser = argparse.ArgumentParser(prog='rme', description='Remove an exisiting element')
-
-		parser.add_argument('elType', help='The type of element')
-		parser.add_argument('name', help='The name of the element')
-		parser.add_argument('seqNum', help='The sequence number')
-		parser.add_argument('shotNum', help='The shot number')
-
-		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
-
-		rme(**args)
 	elif cmd == 'pwe':
 		# Cannot publish if element hasn't been retrieved to work on yet
 		if not env.getEnvironment('element'):
@@ -388,7 +494,7 @@ def handleInput(line):
 	cmds = line.split('|')
 
 	for c in cmds:
-		argv = c.split()
+		argv = shlex.split(c)
 
 		if not argv:
 			exit()
