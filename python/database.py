@@ -833,6 +833,8 @@ class Element(DatabaseObject):
 						os.remove(versionlessFile)
 
 					os.link(file, versionlessFile)
+
+			self.set('pubVersion', prevVersion)
 		else:
 			prevVersionFile = os.path.join(versionsDir, self.getVersionedFileName(versionNum=prevVersion))
 
@@ -848,6 +850,7 @@ class Element(DatabaseObject):
 				os.remove(versionlessFile)
 
 			os.link(prevVersionFile, versionlessFile)
+			self.set('pubVersion', prevVersion)
 
 		return prevVersion
 
