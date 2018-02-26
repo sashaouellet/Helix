@@ -466,7 +466,13 @@ def main(cmd, argv):
 
 		print element
 	elif cmd == 'help' or cmd == 'h' or cmd == '?':
-		pass # TODO: implement help output
+		with open(env.getEnvironment('HELP')) as file:
+			line = file.readline()
+
+			while line:
+				print line,
+
+				line = file.readline()
 
 	# Debug commands
 	elif cmd == 'dump':
