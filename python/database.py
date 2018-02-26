@@ -802,7 +802,7 @@ class Element(DatabaseObject):
 
 		relDir = self.getDiskLocation(workDir=False)
 		versionsDir = os.path.join(relDir, '.versions')
-		sequence = bool(self.get('seq', False))
+		sequence = self.get('seq', 'False') == 'True'
 		baseName, ext = os.path.splitext(self.getFileName(sequence=sequence))
 		currVersion = self.get('pubVersion')
 		currVersionFile = os.path.join(versionsDir, self.getVersionedFileName(versionNum=currVersion))
@@ -813,7 +813,7 @@ class Element(DatabaseObject):
 			return False
 
 		if sequence:
-			prevVersionFile = os.path.join(versionsDir, '{}.v{}.{}'.format(baseName, str(prevVersion).zfill(env.VERSION_PADDING), ext))
+			prevVersionFile = os.path.join(versionsDir, '{}.v{}{}'.format(baseName, str(prevVersion).zfill(env.VERSION_PADDING), ext))
 			prevSeq = glob.glob(prevVersionFile)
 
 			if not prevSeq:
@@ -822,10 +822,17 @@ class Element(DatabaseObject):
 
 			for file in prevSeq:
 				fileName = os.path.split(file)[1]
-				match = re.match(r'^.+\.(\d+)\..+$', fileName)
+				match = re.match(r'^(.+)\.(\d+)\..+$', fileName)
 
 				if match:
-					pubVersion = self.publishFile(fileName, version=prevVersion, frameNum=int(match.group(1)), updateVersion=False)
+					versionlessFile = os.path.join(relDir, '{}.{}{}'.format(match.group(1), match.group(2), ext))
+
+					print 'Updating link: {}'.format(versionlessFile), '-->', file
+
+					if os.path.exists(versionlessFile):
+						os.remove(versionlessFile)
+
+					os.link(file, versionlessFile)
 		else:
 			prevVersionFile = os.path.join(versionsDir, self.getVersionedFileName(versionNum=prevVersion))
 
@@ -833,7 +840,14 @@ class Element(DatabaseObject):
 				print 'Rollback failed. Rollback version file is missing: {}'.format(prevVersionFile)
 				return False
 
-			self.publishFile(self.getFileName(), version=prevVersion, updateVersion=False)
+			versionlessFile = os.path.join(relDir, '{}{}'.format(baseName, ext))
+
+			print 'Updating link: {}'.format(versionlessFile), '-->', prevVersionFile
+
+			if os.path.exists(versionlessFile):
+				os.remove(versionlessFile)
+
+			os.link(prevVersionFile, versionlessFile)
 
 		return prevVersion
 
@@ -864,7 +878,9 @@ class Element(DatabaseObject):
 		fileName = self.getFileName()
 		workDirCopy = os.path.join(workDir, fileName)
 		version = self.get('version')
-		sequence = bool(self.get('seq', False))
+		sequence = self.get('seq', 'False') == 'True'
+
+		print 'Publishing: {} (Sequence={})'.format(workDirCopy, sequence)
 
 		if sequence:
 			workDirCopy = os.path.join(workDir, self.getFileName(sequence=True))
@@ -888,7 +904,7 @@ class Element(DatabaseObject):
 		else:
 			return self.publishFile(fileName)
 
-	def publishFile(self, fileName, version=None, frameNum=None, updateVersion=True):
+	def publishFile(self, fileName, version=None, frameNum=None):
 		"""Given a file name of the work directory file to publish to "release", copies
 		the file to the release directory's versions folder and sets up the proper hard link.
 
@@ -896,8 +912,6 @@ class Element(DatabaseObject):
 		    fileName (str): The current existing file to publish to the release directory
 		    version (int, optional): The explicit version number to publish to
 		    frameNum (int, optional): The frame number of the file to publish
-		    updateVersion (bool, optional): Whether to update the current working version or not.
-		    	By default will do so, but for rollbacks this is not necessary.
 
 		Returns:
 		    int: The new version number that was just published
@@ -922,7 +936,7 @@ class Element(DatabaseObject):
 		if os.path.exists(versionlessFile):
 			os.remove(versionlessFile)
 
-		#os.link(versionDest, versionlessFile)
+		os.link(versionDest, versionlessFile)
 
 		# TODO: make versionless and versionDest read-only?
 
@@ -931,13 +945,11 @@ class Element(DatabaseObject):
 		#os.chmod(versionlessFile, S_IREAD|S_IRGRP|S_SIROTH)
 
 		version = self.get('version') if not version else version
+		versionInfo = self.get('versionInfo', {})
+		versionInfo[version] = '{}/{}'.format(*env.getCreationInfo()) # Timestamp and user info for publish
 
-		if updateVersion:
-			versionInfo = self.get('versionInfo', {})
-			versionInfo[version] = '{}/{}'.format(*env.getCreationInfo()) # Timestamp and user info for publish
-
-			self.set('version', int(version) + 1)
-			self.set('versionInfo', versionInfo)
+		self.set('version', int(version) + 1)
+		self.set('versionInfo', versionInfo)
 
 		self.set('pubVersion', int(version))
 
