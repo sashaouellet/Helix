@@ -1,5 +1,5 @@
 import getpass
-import environment as env
+import helix.environment.environment as env
 import re
 
 class PermissionHandler(object):

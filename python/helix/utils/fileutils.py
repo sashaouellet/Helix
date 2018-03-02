@@ -1,5 +1,5 @@
 import os, re
-import environment as env
+import helix.environment.environment as env
 
 cfg = env.getConfig()
 

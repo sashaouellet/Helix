@@ -1,8 +1,8 @@
 import sys, os, shlex
 import argparse
-import environment as env
-from database import *
-from permissions import PermissionHandler
+import helix.environment.environment as env
+from helix.database.database import *
+from helix.environment.permissions import PermissionHandler
 
 dbLoc = env.getEnvironment('db')
 

@@ -1,5 +1,5 @@
 import os
-from config import GeneralConfigHandler
+from helix.environment.config import GeneralConfigHandler
 
 VAR_PREFIX = 'HELIX_'
 
