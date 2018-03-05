@@ -10,7 +10,7 @@ __date__    = 02/18/18
 import json
 import os, sys, shutil, glob, datetime, copy, re
 import helix.environment.environment as env
-import helix.utils.fileutils
+import helix.utils.fileutils as fileutils
 
 class Database(object):
 
@@ -173,7 +173,7 @@ class DatabaseObject(object):
 	def __init__(self, *args, **kwargs):
 		data = kwargs.pop('data', {})
 		self._data = copy.deepcopy(data)
-		self._data['_DBOType'] = self.__class__.__name__
+		self._data['_DBOType'] = self._data.get('_DBOType', self.__class__.__name__)
 
 		for key, val in kwargs.iteritems():
 			self._data[key] = val
@@ -287,7 +287,7 @@ class DatabaseObject(object):
 
 				return ret
 
-			classLookup = {'Show':Show, 'Sequence':Sequence, 'Shot':Shot, 'Set':Set, 'Character':Character, 'Prop':Prop, 'Effect':Effect, 'Comp':Comp, 'Camera':Camera}
+			classLookup = {'Show':Show, 'Sequence':Sequence, 'Shot':Shot, 'Set':Set, 'Character':Character, 'Prop':Prop, 'Effect':Effect, 'Comp':Comp, 'Camera':Camera, 'Plate':Plate}
 			obj = classLookup.get(clazz)
 
 			if obj:
@@ -350,8 +350,11 @@ class ElementContainer(DatabaseObject):
 		name = el.get('name')
 		elType = el.get('type')
 
-		if name not in self._elementTable[elType] or force:
-			self._elementTable[elType][name] = el
+		if name not in self._elementTable.get(elType, {}) or force:
+			elTypeDict = self._elementTable.get(elType, {})
+			elTypeDict[name] = el
+
+			self._elementTable[elType] = elTypeDict
 
 			if makeDirs:
 				seq = self.get('seq')
@@ -726,6 +729,8 @@ class Element(DatabaseObject):
 	    EFFECT (str): An FX setup - i.e. simulations
 	    PROP (str): A prop
 	    SET (str): A set, the environment a particular shot is set in. Includes the light rig.
+	    TEXTURE (str): An image representing a texture
+	    PLATE (str): An image/image sequence (footage)
 	    ELEMENT_TYPES (TYPE): A list of all the aforementioned types. Holds what can of elements can be retrieved
 	    	from lookup tables.
 	"""
@@ -737,7 +742,8 @@ class Element(DatabaseObject):
 	EFFECT = 'effect'
 	COMP = 'comp'
 	CAMERA = 'camera'
-	ELEMENT_TYPES = [SET, CHARACTER, PROP, TEXTURE, EFFECT, COMP, CAMERA]
+	PLATE = 'plate'
+	ELEMENT_TYPES = [SET, CHARACTER, PROP, TEXTURE, EFFECT, COMP, CAMERA, PLATE]
 
 	def getFileName(self, sequence=False): # TODO: determine format for publish file name
 		"""Gets the file name of the element - that is the filename that the system will look for
@@ -975,7 +981,7 @@ class Element(DatabaseObject):
 		if shot:
 			self.translateTable()
 
-			if shot.addElement(Element(self._data)):
+			if shot.addElement(Element(data=self._data)):
 				overrides = self.get('overrides', [])
 
 				overrides.append('{}/{}'.format(seq.get('num'), shot.get('num')))
@@ -987,7 +993,7 @@ class Element(DatabaseObject):
 			# Only sequence specified
 			self.translateTable()
 
-			if seq.addElement(Element(self._data)):
+			if seq.addElement(Element(data=self._data)):
 				overrides = self.get('overrides', [])
 
 				overrides.append('{}/{}'.format(seq.get('num'), -1))
@@ -1088,6 +1094,8 @@ class Element(DatabaseObject):
 			element = Comp()
 		elif elType == Element.CAMERA:
 			element = Camera()
+		elif elType == Element.PLATE:
+			element = Plate()
 		else:
 			raise ValueError('Invalid element type specified')
 
@@ -1122,4 +1130,7 @@ class Comp(Element):
 	pass
 
 class Camera(Element):
+	pass
+
+class Plate(Element):
 	pass

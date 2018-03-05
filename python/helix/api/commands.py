@@ -51,7 +51,7 @@ def rmseq(seqNum, clean=False):
 def mkshot(seqNum, shotNum):
 	try:
 		seq = env.show.getSequence(seqNum)
-		shot = Shot(num=int(shotNum))
+		shot = Shot(seq=int(seqNum), num=int(shotNum))
 
 		if seq.addShot(shot):
 			print 'Successfully created shot'
@@ -87,17 +87,23 @@ def pop(showName):
 
 	print 'Set environment for {}'.format(showName)
 
-def mke(elType, name):
+def mke(elType, name, sequence=None, shot=None):
 	try:
-		element = env.show.getElement(elType.lower(), name) # TODO sanitize name
+		container = env.show # Where to get element from
+
+		if sequence and shot:
+			_, container = env.show.getShot(sequence, shot)
+		elif sequence:
+			container = env.show.getSequence(sequence)
+
+		element = container.getElement(elType.lower(), name) # TODO sanitize name
 
 		if element:
 			print 'Element already exists (did you mean to use "ge"?)'
 			return
 
-		env.show.addElement(Element.factory(elType.lower(), name))
+		container.addElement(Element.factory(elType.lower(), name))
 		db.save()
-
 	except DatabaseError:
 		return
 
@@ -219,19 +225,19 @@ def elements(elType=None, date=None):
 
 	print '\n'.join([str(el) for el in els])
 
-def rme(elType, name, seqNum, shotNum):
-	elType = elType.lower()
-	# TODO: sanitize name input
+def rme(elType, name, sequence=None, shot=None):
 	try:
-		seq, shot, element = env.show.getElement(seqNum, shotNum, elType, name)
+		container = env.show # Where to get element from
 
-		if not element:
-			print 'Element doesn\'t exist'
-			return
+		if sequence and shot:
+			_, container = env.show.getShot(sequence, shot)
+		elif sequence:
+			container = env.show.getSequence(sequence)
 
-		shot.destroyElement(elType, name)
+		element = container.getElement(elType.lower(), name) # TODO sanitize name
+
+		container.destroyElement(elType, name)
 		db.save()
-
 	except DatabaseError:
 		return
 
@@ -333,6 +339,8 @@ def main(cmd, argv):
 
 		parser.add_argument('elType', help='The type of element (Set, Character, Prop, Effect, etc.) to make')
 		parser.add_argument('name', help='The name of the element that will be made (i.e. Table)')
+		parser.add_argument('--sequence', '-sq', default=None, help='The sequence number')
+		parser.add_argument('--shot', '-s', default=None, help='The shot number')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
@@ -346,6 +354,8 @@ def main(cmd, argv):
 
 		parser.add_argument('elType', help='The type of element')
 		parser.add_argument('name', help='The name of the element')
+		parser.add_argument('--sequence', '-sq', default=None, help='The sequence number')
+		parser.add_argument('--shot', '-s', default=None, help='The shot number')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
