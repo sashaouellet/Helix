@@ -48,7 +48,7 @@ def rmseq(seqNum, clean=False):
 		print 'Successfully removed sequence'
 		db.save()
 
-def mkshot(seqNum, shotNum):
+def mkshot(seqNum, shotNum, start, end):
 	try:
 		seq = env.show.getSequence(seqNum)
 		shot = Shot(seq=int(seqNum), num=int(shotNum))
@@ -311,6 +311,8 @@ def main(cmd, argv):
 
 		parser.add_argument('seqNum', help='The number of the sequence to make the shot in')
 		parser.add_argument('shotNum', help='The number of the shot to make')
+		parser.add_argument('start', help='Start frame of the shot')
+		parser.add_argument('end', help='End frame of the shot')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
@@ -499,6 +501,8 @@ def main(cmd, argv):
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
 		getenv(**args)
+	elif cmd == 'exit' or cmd == 'quit':
+		exit()
 	else:
 		print 'Unknown command: {}'.format(cmd)
 
