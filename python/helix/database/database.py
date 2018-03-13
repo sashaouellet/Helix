@@ -666,7 +666,7 @@ class Sequence(ElementContainer):
 		Returns:
 		    database.Shot: The remove shot, or None if it didn't exist
 		"""
-		shot = self._shotTable.pop(int(shot), None)
+		shot = self._shotTable.pop(int(shotNum), None)
 
 		# TODO implement directory cleaning
 
