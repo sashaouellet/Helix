@@ -22,14 +22,21 @@ def mkshow(showName):
 		db.save()
 
 def rmshow(showName, clean=False):
-	show = db.removeShow(showName, clean)
+	print 'You are about to delete the show: {}. {}Are you sure you want to proceed? (y/n) '.format(showName, 'All files on disk associated with the show will also be deleted. ' if clean else ''),
 
-	if not show:
-		print 'Didn\'t recognize show: {}'.format(showName)
-		return
+	resp = sys.stdin.readline().strip().lower()
+
+	if resp in ('y', 'yes'):
+		show = db.removeShow(showName, clean)
+
+		if not show:
+			print 'Didn\'t recognize show: {}'.format(showName)
+			return
+		else:
+			print 'Successfully removed show'
+			db.save()
 	else:
-		print 'Successfully removed show'
-		db.save()
+		return
 
 def mkseq(seqNum):
 	seq = Sequence(num=int(seqNum))
@@ -51,7 +58,7 @@ def rmseq(seqNum, clean=False):
 def mkshot(seqNum, shotNum, start, end):
 	try:
 		seq = env.show.getSequence(seqNum)
-		shot = Shot(seq=int(seqNum), num=int(shotNum))
+		shot = Shot(seq=int(seqNum), num=int(shotNum), start=int(start), end=int(end))
 
 		if seq.addShot(shot):
 			print 'Successfully created shot'
@@ -91,6 +98,15 @@ def mke(elType, name, sequence=None, shot=None):
 	try:
 		container = env.show # Where to get element from
 
+		if name == '-':
+			if not sequence or not shot:
+				print 'Sequence and shot must be specified if using "-" name option'
+				return
+
+			name = '__sq{}s{}'.format(str(sequence).zfill(env.SEQUENCE_SHOT_PADDING), str(shot).zfill(env.SEQUENCE_SHOT_PADDING))
+
+			print 'Internal name will now be: {}'.format(name)
+
 		if sequence and shot:
 			_, container = env.show.getShot(sequence, shot)
 		elif sequence:
@@ -109,13 +125,17 @@ def mke(elType, name, sequence=None, shot=None):
 
 def get(elType, name, sequence=None, shot=None):
 	try:
+		if name == '-' and sequence and shot:
+			# Trying to get special element created earlier, reformat to internal name
+			name = '__sq{}s{}'.format(str(sequence).zfill(env.SEQUENCE_SHOT_PADDING), str(shot).zfill(env.SEQUENCE_SHOT_PADDING))
+
 		element = env.show.getElement(elType.lower(), name, sequence, shot)
 
 		if not element:
 			print 'Element doesn\'t exist (Check for typos in the name, or make a new element using "mke")'
 			return
 
-		env.setEnvironment('element', element.getDiskLocation())
+		env.setEnvironment('element', element.getDiskLocation(seq=sequence, shot=shot))
 		env.element = element
 
 		print 'Working on {}'.format(element)
@@ -218,6 +238,12 @@ def elements(elType=None, date=None):
 
 	els = env.show.getElements(types=elType)
 
+	for sequence in env.show.getSequences():
+		els.extend(sequence.getElements(types=elType))
+
+		for shot in sequence.getShots():
+			els.extend(shot.getElements(types=elType))
+
 	if date:
 		els = [e for e in els if e.isMoreRecent(date)]
 
@@ -225,7 +251,7 @@ def elements(elType=None, date=None):
 
 	print '\n'.join([str(el) for el in els])
 
-def rme(elType, name, sequence=None, shot=None):
+def rme(elType, name, sequence=None, shot=None, clean=False):
 	try:
 		container = env.show # Where to get element from
 
@@ -236,7 +262,7 @@ def rme(elType, name, sequence=None, shot=None):
 
 		element = container.getElement(elType.lower(), name) # TODO sanitize name
 
-		container.destroyElement(elType, name)
+		container.destroyElement(elType, name, clean)
 		db.save()
 	except DatabaseError:
 		return
@@ -340,7 +366,7 @@ def main(cmd, argv):
 		parser = argparse.ArgumentParser(prog='mke', description='Make an element (Set, Character, Prop, Effect, etc.)')
 
 		parser.add_argument('elType', help='The type of element (Set, Character, Prop, Effect, etc.) to make')
-		parser.add_argument('name', help='The name of the element that will be made (i.e. Table)')
+		parser.add_argument('name', help='The name of the element that will be made (i.e. Table). Specify "-" to indicate no name (but sequence and shot must be specified)')
 		parser.add_argument('--sequence', '-sq', default=None, help='The sequence number')
 		parser.add_argument('--shot', '-s', default=None, help='The shot number')
 
@@ -358,6 +384,7 @@ def main(cmd, argv):
 		parser.add_argument('name', help='The name of the element')
 		parser.add_argument('--sequence', '-sq', default=None, help='The sequence number')
 		parser.add_argument('--shot', '-s', default=None, help='The shot number')
+		parser.add_argument('--clean', '-c', action='store_true', help='Remove associated files/directories for this element')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
@@ -526,6 +553,8 @@ def handleInput(line):
 				main(cmd, argv[1:])
 			else:
 				print 'You don\'t have permission to do this'
+		except DatabaseError:
+			return
 		except SystemExit as e:
 			# I really don't like this, but not sure how to handle
 			# the exception argparse raises when typing an invalid command
