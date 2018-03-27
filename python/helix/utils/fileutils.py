@@ -3,15 +3,14 @@ import helix.environment.environment as env
 
 cfg = env.getConfig()
 
-PADDING = cfg.config.getint('Formatting', 'sequenceshotpadding')
 SEQUENCE_FORMAT = 'sq{}'
 SHOT_FORMAT = 's{}'
 
 def formatShotDir(seqNum, shotNum=None):
 	if shotNum:
-		return os.path.join(SEQUENCE_FORMAT.format(str(seqNum).zfill(PADDING)), SHOT_FORMAT.format(str(shotNum).zfill(PADDING)))
+		return os.path.join(SEQUENCE_FORMAT.format(str(seqNum).zfill(env.SEQUENCE_SHOT_PADDING)), SHOT_FORMAT.format(str(shotNum).zfill(env.SEQUENCE_SHOT_PADDING)))
 
-	return SEQUENCE_FORMAT.format(str(seqNum).zfill(PADDING))
+	return SEQUENCE_FORMAT.format(str(seqNum).zfill(env.SEQUENCE_SHOT_PADDING))
 
 def convertToCamelCase(input, firstIsLowercase=False):
 	"""Given an input string of words (separated by space), converts

@@ -41,6 +41,7 @@ cfg = getConfig()
 DATE_FORMAT = cfg.config.get('Formatting', 'dateformat')
 VERSION_PADDING = cfg.config.getint('Formatting', 'versionpadding')
 FRAME_PADDING = cfg.config.getint('Formatting', 'framepadding')
+SEQUENCE_SHOT_PADDING = cfg.config.getint('Formatting', 'sequenceshotpadding')
 
 show = None
 element = None
