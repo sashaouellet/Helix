@@ -113,7 +113,7 @@ class Database(object):
 		Returns:
 			bool: Whether the show was successfully added or not
 		"""
-		showName = show.get('name').lower()
+		showName = show.get('name')
 
 		if showName not in self._showTable or force:
 			self._showTable[showName] = show
@@ -132,9 +132,17 @@ class Database(object):
 		Returns:
 		    database.Show: The removed show (if it existed), otherwise None
 		"""
-		show = self._showTable.pop(showName.lower(), None)
+		show = self._showTable.pop(showName, None)
 
-		# TODO implement directory cleaning
+		if show and clean:
+			work = os.path.join(env.getEnvironment('work'), show.get('dirName'))
+			release = os.path.join(env.getEnvironment('release'), show.get('dirName'))
+
+			if os.path.exists(work):
+				shutil.rmtree(work)
+
+			if os.path.exists(release):
+				shutil.rmtree(release)
 
 		return show
 
@@ -438,6 +446,10 @@ class ElementContainer(DatabaseObject):
 		    elType (str): The type of the element to remove (i.e. "prop", "character")
 		    name (str): The name of the element to remove
 		"""
+		if not self._elementTable[elType].get(name):
+			print 'Element {} doesn\'t exist'.format(name)
+			raise DatabaseError
+
 		self._elementTable[elType].pop(name)
 
 class Show(ElementContainer):
@@ -496,9 +508,16 @@ class Show(ElementContainer):
 		Returns:
 		    database.Sequence: The removed sequence (if it existed), otherwise None
 		"""
+		work = self.getSequenceDir(seqNum)
+		release = self.getSequenceDir(seqNum, work=False)
 		seq = self._seqTable.pop(int(seqNum), None)
 
-		# TODO implement directory cleaning
+		if seq and clean:
+			if os.path.exists(work):
+				shutil.rmtree(work)
+
+			if os.path.exists(release):
+				shutil.rmtree(release)
 
 		return seq
 
@@ -608,6 +627,18 @@ class Show(ElementContainer):
 		"""
 		return fileutils.sanitize(fileutils.convertToCamelCase(self.get('name')))
 
+	def getSequenceDir(self, seqNum, work=True):
+		baseDir = env.getEnvironment('work') if work else env.getEnvironment('release')
+		seq = self.getSequence(seqNum)
+
+		return os.path.join(baseDir, self.get('dirName'), seq.getDirectoryName())
+
+	def getShotDir(self, seqNum, shotNum, work=True):
+		baseDir = env.getEnvironment('work') if work else env.getEnvironment('release')
+		seq, shot = self.getShot(seqNum, shotNum)
+
+		return os.path.join(baseDir, self.get('dirName'), seq.getDirectoryName(), shot.getDirectoryName())
+
 	def __repr__(self):
 		return '{} ({})'.format(self.get('name', 'undefined'), ', '.join(self.get('aliases', [])))
 
@@ -666,9 +697,16 @@ class Sequence(ElementContainer):
 		Returns:
 		    database.Shot: The remove shot, or None if it didn't exist
 		"""
+		work = env.show.getShotDir(self.get('num', 0), shotNum)
+		release = env.show.getShotDir(self.get('num', 0), shotNum, work=False)
 		shot = self._shotTable.pop(int(shotNum), None)
 
-		# TODO implement directory cleaning
+		if shot and clean:
+			if os.path.exists(work):
+				shutil.rmtree(work)
+
+			if os.path.exists(release):
+				shutil.rmtree(release)
 
 		return shot
 
@@ -698,6 +736,9 @@ class Sequence(ElementContainer):
 		"""
 		return self._shotTable.values()
 
+	def getDirectoryName(self):
+		return fileutils.SEQUENCE_FORMAT.format(str(self.get('num', 0)).zfill(env.SEQUENCE_SHOT_PADDING))
+
 	def __repr__(self):
 		return 'Sequence {}'.format(self.get('num', -1))
 
@@ -713,6 +754,9 @@ class Shot(ElementContainer):
 
 	def translateTable(self):
 		super(Shot, self).translateTable()
+
+	def getDirectoryName(self):
+		return fileutils.SHOT_FORMAT.format(str(self.get('num', 0)).zfill(env.SEQUENCE_SHOT_PADDING))
 
 	def __repr__(self):
 		return 'Shot {} in sequence {}'.format(self.get('num', -1), self.get('seq', -1))
@@ -740,7 +784,7 @@ class Element(DatabaseObject):
 	PROP = 'prop'
 	TEXTURE = 'texture'
 	EFFECT = 'effect'
-	COMP = 'comp'
+	COMP = 'nuke'
 	CAMERA = 'camera'
 	PLATE = 'plate'
 	ELEMENT_TYPES = [SET, CHARACTER, PROP, TEXTURE, EFFECT, COMP, CAMERA, PLATE]
@@ -1059,11 +1103,18 @@ class Element(DatabaseObject):
 		"""
 		baseDir = env.getEnvironment('work') if workDir else env.getEnvironment('release')
 		show = env.show
+		name = self.get('name')
+
+		# For special reserved element names, we don't create the additional subdirectory.
+		# This is so that we can have specific elements that are "overridden" for a shot that will
+		# be the only one of its kind in the directory, so it is less confusing overall for the end
+		# user. This is pretty hack at the moment and I'd like to revisit a new solution
+		nameDir = '' if name.startswith('__sq') else name
 
 		if seq:
-			return os.path.join(baseDir, show.get('dirName'), fileutils.formatShotDir(seq, shot), self.get('type'), self.get('name'))
+			return os.path.join(baseDir, show.get('dirName'), fileutils.formatShotDir(seq, shot), self.get('type'), nameDir)
 
-		return os.path.join(baseDir, show.get('dirName'), self.get('type'), self.get('name'))
+		return os.path.join(baseDir, show.get('dirName'), self.get('type'), nameDir)
 
 	@staticmethod
 	def factory(elType, name):
