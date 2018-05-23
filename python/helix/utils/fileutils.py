@@ -6,6 +6,24 @@ cfg = env.getConfig()
 SEQUENCE_FORMAT = 'sq{}'
 SHOT_FORMAT = 's{}'
 
+def makeRelative(path, envVar):
+	envValue = env.getEnvironment(envVar)
+
+	if not envValue:
+		return path
+
+	return path.replace(envValue, '${}{}'.format(env.VAR_PREFIX, envVar.upper()))
+
+def openPathInExplorer(path):
+	import platform, subprocess
+
+	if platform.system() == 'Windows':
+		os.startfile(path)
+	elif platform.system() == 'Darwin':
+		subprocess.Popen(['open', path])
+	else:
+		subprocess.Popen(['xdg-open', path])
+
 def formatShotDir(seqNum, shotNum=None):
 	if shotNum:
 		return os.path.join(SEQUENCE_FORMAT.format(str(seqNum).zfill(env.SEQUENCE_SHOT_PADDING)), SHOT_FORMAT.format(str(shotNum).zfill(env.SEQUENCE_SHOT_PADDING)))
