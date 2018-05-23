@@ -3,6 +3,9 @@ import argparse
 import helix.environment.environment as env
 from helix.database.database import *
 from helix.environment.permissions import PermissionHandler
+import helix.api.dcc.nuke as nuke
+import helix.api.dcc.maya as maya
+import helix.api.dcc.houdini as houdini
 
 dbLoc = env.getEnvironment('db')
 
@@ -11,15 +14,16 @@ if not dbLoc:
 
 db = Database(dbLoc)
 perms = PermissionHandler()
+ERROR_BUBBLING = False
 
 # User commands
 def mkshow(showName):
 	show = Show(name=showName)
 
-	if db.addShow(show):
+	show.set('dirName', show.getSafeName())
+
+	if db.addShow(show) and db.save():
 		print 'Successfully created new show'
-		show.set('dirName', show.getSafeName())
-		db.save()
 
 def rmshow(showName, clean=False):
 	print 'You are about to delete the show: {}. {}Are you sure you want to proceed? (y/n) '.format(showName, 'All files on disk associated with the show will also be deleted. ' if clean else ''),
@@ -32,18 +36,22 @@ def rmshow(showName, clean=False):
 		if not show:
 			print 'Didn\'t recognize show: {}'.format(showName)
 			return
-		else:
+		elif db.save():
 			print 'Successfully removed show'
-			db.save()
 	else:
 		return
 
 def mkseq(seqNum):
 	seq = Sequence(num=int(seqNum))
 
-	if env.show.addSequence(seq):
-		print 'Successfully created sequence'
+	try:
+		env.show.addSequence(seq)
 		db.save()
+	except DatabaseError:
+		if ERROR_BUBBLING:
+			raise
+		else:
+			return
 
 def rmseq(seqNum, clean=False):
 	seq = env.show.removeSequence(int(seqNum), clean)
@@ -51,20 +59,23 @@ def rmseq(seqNum, clean=False):
 	if not seq:
 		print 'Sequence {} doesn\'t exist'.format(seqNum)
 		return
-	else:
+	elif db.save():
 		print 'Successfully removed sequence'
-		db.save()
 
-def mkshot(seqNum, shotNum, start, end):
+def mkshot(seqNum, shotNum, start, end, clipName):
 	try:
 		seq = env.show.getSequence(seqNum)
-		shot = Shot(seq=int(seqNum), num=int(shotNum), start=int(start), end=int(end))
+		shot = Shot(seq=int(seqNum), num=int(shotNum), start=int(start), end=int(end), clipName=clipName)
 
-		if seq.addShot(shot):
-			print 'Successfully created shot'
-			db.save()
+		seq.addShot(shot)
+		db.save()
+
+		print 'Successfully created shot'
 	except DatabaseError:
-		return
+		if ERROR_BUBBLING:
+			raise
+		else:
+			return
 
 def rmshot(seqNum, shotNum, clean=False):
 	try:
@@ -74,9 +85,8 @@ def rmshot(seqNum, shotNum, clean=False):
 		if not shot:
 			print 'Shot {} doesn\'t exist for sequence {}'.format(shotNum, seqNum)
 			return
-		else:
+		elif db.save():
 			print 'Successfully removed shot'
-			db.save()
 	except DatabaseError:
 		return
 
@@ -115,13 +125,22 @@ def mke(elType, name, sequence=None, shot=None):
 		element = container.getElement(elType.lower(), name) # TODO sanitize name
 
 		if element:
-			print 'Element already exists (did you mean to use "ge"?)'
-			return
+			if ERROR_BUBBLING:
+				raise DatabaseError('Element already exists')
+			else:
+				print 'Element already exists (did you mean to use "ge"?)'
+				return
 
-		container.addElement(Element.factory(elType.lower(), name))
+		el = Element.factory(elType.lower(), name)
+
+		el.setParent(container)
+		container.addElement(el)
 		db.save()
 	except DatabaseError:
-		return
+		if ERROR_BUBBLING:
+			raise
+		else:
+			return
 
 def get(elType, name, sequence=None, shot=None):
 	try:
@@ -135,7 +154,7 @@ def get(elType, name, sequence=None, shot=None):
 			print 'Element doesn\'t exist (Check for typos in the name, or make a new element using "mke")'
 			return
 
-		env.setEnvironment('element', element.getDiskLocation(seq=sequence, shot=shot))
+		env.setEnvironment('element', element.getDiskLocation())
 		env.element = element
 
 		print 'Working on {}'.format(element)
@@ -146,29 +165,34 @@ def get(elType, name, sequence=None, shot=None):
 # Element-context commands
 def pub():
 	element = env.element
-	newVersion = element.versionUp()
 
-	if newVersion:
-		print 'Published new version: {}'.format(newVersion)
+	try:
+		newVersion = element.versionUp()
+
 		db.save()
+		print 'Published new version: {}'.format(newVersion)
+	except PublishError:
+		if ERROR_BUBBLING:
+			raise
+		else:
+			return
 
 def roll(version=None):
 	element = env.element
 	newVersion = element.rollback(version=version)
 
-	if newVersion:
+	if newVersion and db.save():
 		print 'Rolled back published file to version: {}'.format(newVersion)
-		db.save()
 
 def mod(attribute, value=None):
 	element = env.element
 
 	if value:
 		try:
-			element.set(attribute, value, checkKey=True)
-			db.save()
+			element.set(attribute, value)
 
-			print 'Set {} to {}'.format(attribute, value)
+			if db.save():
+				print 'Set {} to {}'.format(attribute, value)
 		except DatabaseError:
 			return
 	else:
@@ -179,9 +203,8 @@ def override(sequence=None, shot=None):
 		try:
 			seq, s = env.show.getShot(sequence, shot)
 
-			if env.element.makeOverride(seq, s):
+			if env.element.makeOverride(seq, s) and db.save():
 				print 'Created override for sequence {} shot {}'.format(sequence, shot)
-				db.save()
 			else:
 				print 'Override creation failed'
 		except DatabaseError:
@@ -190,9 +213,8 @@ def override(sequence=None, shot=None):
 		try:
 			seq = env.show.getSequence(sequence)
 
-			if env.element.makeOverride(seq):
+			if env.element.makeOverride(seq) and db.save():
 				print 'Created override for sequence {}'.format(sequence)
-				db.save()
 			else:
 				print 'Override creation failed'
 		except DatabaseError:
@@ -218,6 +240,40 @@ def override(sequence=None, shot=None):
 		except DatabaseError:
 			return
 
+def createFile(name=None):
+	env.element.getWorkFile()
+	return
+	elType = env.element.get('type')
+
+	if elType in ('nuke', 'camera'):
+		fileName, version = nuke.getFile(env.element, name=name)
+
+		if not fileName:
+			print 'No existing file found, making a new one'
+			fileName = nuke.createBlank(env.element, name=name)
+
+		print 'Opening file: ' + str(fileName)
+		nuke.openFile(str(fileName))
+	elif elType in ('prop', 'set', 'character'):
+		# Maya
+		fileName, version = maya.getFile(env.element, name=name)
+
+		if not fileName:
+			print 'No existing file found, making a new one'
+			fileName = maya.createBlank(env.element, name=name)
+
+		print 'Opening file: ' + str(fileName)
+		maya.openFile(str(fileName))
+	elif elType in ('effect'):
+		fileName, version = houdini.getFile(env.element, name=name)
+
+		if not fileName:
+			print 'No existing file found, making a new one'
+			fileName = houdini.createBlank(env.element, name=name)
+
+		print 'Opening file: ' + str(fileName)
+		houdini.openFile(str(fileName))
+
 def shows():
 	print '\n'.join([str(s) for s in db.getShows()])
 
@@ -232,17 +288,25 @@ def shots(seqNum):
 	except DatabaseError:
 		return
 
-def elements(elType=None, date=None):
+def elements(elType=None, sequence=None, shot=None, date=None):
 	if elType:
 		elType = elType.split(',')
 
-	els = env.show.getElements(types=elType)
+	container = env.show
 
-	for sequence in env.show.getSequences():
-		els.extend(sequence.getElements(types=elType))
+	if sequence and shot:
+		_, container = env.show.getShot(sequence, shot)
+	elif sequence:
+		container = env.show.getSequence(sequence)
 
-		for shot in sequence.getShots():
-			els.extend(shot.getElements(types=elType))
+	els = container.getElements(types=elType)
+
+	if isinstance(container, Show):
+		for sequence in container.getSequences():
+			els.extend(sequence.getElements(types=elType))
+
+			for shot in sequence.getShots():
+				els.extend(shot.getElements(types=elType))
 
 	if date:
 		els = [e for e in els if e.isMoreRecent(date)]
@@ -263,7 +327,9 @@ def rme(elType, name, sequence=None, shot=None, clean=False):
 		element = container.getElement(elType.lower(), name) # TODO sanitize name
 
 		container.destroyElement(elType, name, clean)
-		db.save()
+
+		if db.save():
+			print 'Successfully removed element {}'.format(element)
 	except DatabaseError:
 		return
 
@@ -339,6 +405,7 @@ def main(cmd, argv):
 		parser.add_argument('shotNum', help='The number of the shot to make')
 		parser.add_argument('start', help='Start frame of the shot')
 		parser.add_argument('end', help='End frame of the shot')
+		parser.add_argument('clipName', help='The name of the clip associated with this shot')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
@@ -453,6 +520,18 @@ def main(cmd, argv):
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
 		override(**args)
+	elif cmd == 'file':
+		if not env.getEnvironment('element'):
+			print 'Please get an element to work on first'
+			return
+
+		parser = argparse.ArgumentParser(prog='file', description='Opens the work file (or creates a file if it doesn\'t exist) for the current element')
+
+		parser.add_argument('--name', '-n', default=None, help='A different name for the file other than the element\'s name')
+
+		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
+
+		createFile(**args)
 	elif cmd == 'els' or cmd == 'elements':
 		if not env.getEnvironment('show'):
 			print 'Please pop into a show first'
@@ -461,6 +540,8 @@ def main(cmd, argv):
 		parser = argparse.ArgumentParser(prog='elements', description='List all elements for the current show')
 
 		parser.add_argument('elType', help='A comma separated list of elements to filter by', default=None, nargs='?')
+		parser.add_argument('--sequence', '-sq', default=None, help='The sequence number to get elements from')
+		parser.add_argument('--shot', '-s', default=None, help='The shot number to get elements from')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
