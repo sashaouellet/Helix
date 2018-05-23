@@ -9,37 +9,88 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1104</width>
+    <width>1016</width>
     <height>723</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Helix Visualizer</string>
+   <string>Helix Show Management</string>
   </property>
-  <widget class="QWidget" name="centralwidget">
-   <widget class="QTreeView" name="VIEW_tree">
-    <property name="geometry">
-     <rect>
-      <x>10</x>
-      <y>10</y>
-      <width>1081</width>
-      <height>661</height>
-     </rect>
-    </property>
-    <property name="uniformRowHeights">
-     <bool>true</bool>
-    </property>
-    <attribute name="headerVisible">
-     <bool>true</bool>
-    </attribute>
-   </widget>
+  <widget class="QWidget" name="WIDG_main">
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <item>
+     <widget class="QColumnView" name="VIEW_cols">
+      <property name="tabKeyNavigation">
+       <bool>true</bool>
+      </property>
+      <property name="alternatingRowColors">
+       <bool>true</bool>
+      </property>
+      <property name="selectionMode">
+       <enum>QAbstractItemView::SingleSelection</enum>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="Line" name="line">
+      <property name="orientation">
+       <enum>Qt::Horizontal</enum>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="label">
+      <property name="text">
+       <string>Elements</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QTableWidget" name="TBL_elements">
+      <property name="alternatingRowColors">
+       <bool>true</bool>
+      </property>
+      <property name="selectionMode">
+       <enum>QAbstractItemView::SingleSelection</enum>
+      </property>
+      <property name="selectionBehavior">
+       <enum>QAbstractItemView::SelectRows</enum>
+      </property>
+      <property name="sortingEnabled">
+       <bool>true</bool>
+      </property>
+      <attribute name="horizontalHeaderCascadingSectionResizes">
+       <bool>false</bool>
+      </attribute>
+      <attribute name="horizontalHeaderShowSortIndicator" stdset="0">
+       <bool>true</bool>
+      </attribute>
+      <attribute name="horizontalHeaderStretchLastSection">
+       <bool>true</bool>
+      </attribute>
+      <attribute name="verticalHeaderVisible">
+       <bool>false</bool>
+      </attribute>
+      <column>
+       <property name="text">
+        <string>Type</string>
+       </property>
+      </column>
+      <column>
+       <property name="text">
+        <string>Name</string>
+       </property>
+      </column>
+     </widget>
+    </item>
+   </layout>
   </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1104</width>
+     <width>1016</width>
      <height>28</height>
     </rect>
    </property>
@@ -47,21 +98,57 @@
     <property name="title">
      <string>File</string>
     </property>
+    <widget class="QMenu" name="menuNew">
+     <property name="title">
+      <string>New</string>
+     </property>
+     <addaction name="ACT_newShow"/>
+     <addaction name="ACT_newSeq"/>
+     <addaction name="ACT_newShot"/>
+     <addaction name="ACT_newElement"/>
+    </widget>
+    <addaction name="menuNew"/>
+    <addaction name="ACT_importElement"/>
+    <addaction name="separator"/>
+    <addaction name="separator"/>
     <addaction name="ACT_openDB"/>
+    <addaction name="separator"/>
    </widget>
    <widget class="QMenu" name="menuView">
     <property name="title">
      <string>View</string>
     </property>
+    <widget class="QMenu" name="MENU_elementTypes">
+     <property name="tearOffEnabled">
+      <bool>true</bool>
+     </property>
+     <property name="title">
+      <string>Element types</string>
+     </property>
+     <addaction name="action"/>
+    </widget>
+    <addaction name="ACT_explorer"/>
     <addaction name="ACT_reload"/>
+    <addaction name="ACT_find"/>
+    <addaction name="MENU_elementTypes"/>
+   </widget>
+   <widget class="QMenu" name="menuEdit">
+    <property name="title">
+     <string>Edit</string>
+    </property>
+    <addaction name="ACT_editProperties"/>
    </widget>
    <addaction name="menuFile"/>
+   <addaction name="menuEdit"/>
    <addaction name="menuView"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
   <action name="ACT_openDB">
    <property name="text">
-    <string>Open database...</string>
+    <string>Connect to database...</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+O</string>
    </property>
   </action>
   <action name="ACT_properties">
@@ -78,6 +165,88 @@
    </property>
    <property name="text">
     <string>Reload</string>
+   </property>
+   <property name="shortcut">
+    <string>F5</string>
+   </property>
+  </action>
+  <action name="ACT_newShow">
+   <property name="text">
+    <string>Show</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+N</string>
+   </property>
+  </action>
+  <action name="ACT_newSeq">
+   <property name="text">
+    <string>Sequence</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Q</string>
+   </property>
+  </action>
+  <action name="ACT_newShot">
+   <property name="text">
+    <string>Shot</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+S</string>
+   </property>
+  </action>
+  <action name="ACT_newElement">
+   <property name="text">
+    <string>Element</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+E</string>
+   </property>
+  </action>
+  <action name="ACT_editProperties">
+   <property name="text">
+    <string>Properties...</string>
+   </property>
+   <property name="shortcut">
+    <string>F2</string>
+   </property>
+  </action>
+  <action name="ACT_explorer">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>File location</string>
+   </property>
+  </action>
+  <action name="ACT_publish">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Publish</string>
+   </property>
+  </action>
+  <action name="ACT_rollback">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Rollback...</string>
+   </property>
+  </action>
+  <action name="action">
+   <property name="text">
+    <string>-</string>
+   </property>
+  </action>
+  <action name="ACT_importElement">
+   <property name="text">
+    <string>Import element...</string>
+   </property>
+  </action>
+  <action name="ACT_find">
+   <property name="text">
+    <string>Find</string>
    </property>
   </action>
  </widget>
