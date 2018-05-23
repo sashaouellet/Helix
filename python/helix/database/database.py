@@ -8,12 +8,12 @@ __version__ = 1.0.0
 __date__    = 02/18/18
 """
 import json
-import os, sys, shutil, glob, datetime, copy, re
+import os, sys, shutil, glob, datetime, copy, re, itertools
 import helix.environment.environment as env
 import helix.utils.fileutils as fileutils
+from helix.utils.diff import DiffSet, STATE_ADD
 
 class Database(object):
-
 	"""Represents a collection of shows on disk
 	"""
 
@@ -28,6 +28,7 @@ class Database(object):
 	def __init__(self, dbPath, data=None):
 		self._dbPath = dbPath
 		db = None
+		self._diffToResolve = None
 
 		if data is not None:
 			self._data = data
@@ -41,6 +42,7 @@ class Database(object):
 				db = open(dbPath, 'r+')
 
 			self._data = DatabaseObject.decode(json.load(db))
+			self._origData = copy.deepcopy(self._data) # Keep for saving purposes later
 
 			db.close()
 
@@ -152,20 +154,156 @@ class Database(object):
 		standard data table.
 		"""
 		print 'Saving DB...'
+		result = True
 		self._translateTables()
 
+		hasConflicts, ondiskDiffs, localDiffs, latestDiffs = self._hasMergeConflicts()
+
+		if hasConflicts:
+			for diff in ondiskDiffs.diffSet:
+				localDiff = diff.getFromSet(localDiffs) # Represents the diff between the originally read-in data and the current in-memory data
+				latestDiff = diff.getFromSet(latestDiffs) # Represents the diff between the current on-disk data and the current in-memory data
+
+				if localDiff:
+					# A change on disk (not by current user) was also made in the local changes by the user
+					resp = None
+
+					if not latestDiff:
+						print 'Diff found in original data is not found in the current data'
+						continue
+
+					if not ERROR_BUBBLING:
+						while resp not in ('y', 'n'):
+							print 'Conflicting changes: {}'.format(diff)
+							print 'Discard local changes? Specifying no (n) will overwrite the changes with your local ones. (y/n) ',
+							resp = sys.stdin.readline().lower().strip()
+
+						latestDiff.resolve(discard=resp=='y')
+
+						if resp == 'y':
+							result = False
+					else:
+						self._diffToResolve = latestDiff
+						raise MergeConflictError('Conflicting changes: {}'.format(diff))
+				else:
+					# A change made on disk that we didn't make locally, so we should be able to safely resolve by keeping the latest on disk
+					latestDiff.resolve(True)
+
 		with open(self._dbPath, 'w+') as f:
+			self._translateTables()
 			json.dump(DatabaseObject.encode(self._data), f, sort_keys=True, indent=4, separators=(',', ': '))
+
+			self._origData = copy.deepcopy(self._data)
 
 		print 'Done saving'
 
-class DatabaseError(KeyError):
+	def _hasMergeConflicts(self):
+		"""Checks to see if the current version of the on-disk database has received
+		changes that would conflict with any modifications the user has made with the in-memory
+		database.
+
+		Returns:
+		    database.Show: The removed show (if it existed), otherwise None
+		"""
+		if not os.path.exists(self._dbPath):
+			db = open(self._dbPath, 'w+')
+		else:
+			db = open(self._dbPath, 'r+')
+
+		ondiskData = DatabaseObject.decode(json.load(db))
+
+		db.close()
+
+		ondiskDiffs = DiffSet()
+		localDiffs = DiffSet()
+		latestDiffs = DiffSet()
+		path = []
+		selfShowTable = {}
+		origShowTable = {}
+		ondiskShowTable = {}
+		selfShows = self._data.get('shows', [])
+		origShows = self._origData.get('shows', [])
+		ondiskShows = ondiskData.get('shows', [])
+
+		for show in selfShows:
+			name = show.get('name').lower()
+
+			selfShowTable[name] = show
+
+		for show in origShows:
+			name = show.get('name').lower()
+
+			origShowTable[name] = show
+
+		for show in ondiskShows:
+			name = show.get('name').lower()
+
+			ondiskShowTable[name] = show
+
+		origShow, ondiskShow = zip(*list(itertools.izip_longest(origShowTable.keys(), ondiskShowTable.keys(), fillvalue=None)))
+		origShow, selfShow = zip(*list(itertools.izip_longest(origShowTable.keys(), selfShowTable.keys(), fillvalue=None)))
+
+		# Comparing originally read-in data to the current on-disk data to see if any changes have been made since we last saved/loaded
+		for show, oShow in zip(origShow, ondiskShow):
+			if show:
+				if show not in ondiskShowTable.keys():
+					ondiskDiffs.add(path, 'shows', origShowTable, ondiskShowTable, show, None)
+				else:
+					path.append('shows')
+					ondiskDiffs.merge(origShowTable.get(show).diff(ondiskShowTable.get(show), path))
+					path.pop()
+
+			if oShow:
+				if oShow not in origShowTable.keys():
+					ondiskDiffs.add(path, 'shows', origShowTable, ondiskShowTable, None, oShow)
+
+		# Also compare original read-in data to our current local data to see what changes the user has made.
+		for show, oShow in zip(origShow, selfShow):
+			if show:
+				if show not in selfShowTable.keys():
+					localDiffs.add(path, 'shows', origShowTable, selfShowTable, show, None)
+				else:
+					path.append('shows')
+					localDiffs.merge(origShowTable.get(show).diff(selfShowTable.get(show), path))
+					path.pop()
+
+			if oShow:
+				if oShow not in origShowTable.keys():
+					localDiffs.add(path, 'shows', origShowTable, selfShowTable, None, oShow)
+
+		# Also compare newest on-disk to our in-memory data (for rollback purposes when we have conflicts)
+		for show, oShow in zip(ondiskShow, selfShow):
+			if show:
+				if show not in selfShowTable.keys():
+					latestDiffs.add(path, 'shows', ondiskShowTable, selfShowTable, show, None)
+				else:
+					path.append('shows')
+					latestDiffs.merge(ondiskShowTable.get(show).diff(selfShowTable.get(show), path))
+					path.pop()
+
+			if oShow:
+				if oShow not in ondiskShowTable.keys():
+					latestDiffs.add(path, 'shows', ondiskShowTable, selfShowTable, None, oShow)
+
+		if ondiskDiffs.diffSet:
+			# Had some changes
+			return (True, ondiskDiffs, localDiffs, latestDiffs)
+		else:
+			# Can go through with our local changes since nothing was changed on disk
+			return (False, ondiskDiffs, localDiffs, latestDiffs)
+
+class DatabaseError(Exception):
 
 	"""Defines an error that took place with certain database operations. This custom error
 	is necessary for certain try statements so that we do not preemptively quit while the user
 	is operating on elements, shots, etc.
 	"""
+	pass
 
+class MergeConflictError(Exception):
+	pass
+
+class PublishError(Exception):
 	pass
 
 class DatabaseObject(object):
@@ -221,6 +359,18 @@ class DatabaseObject(object):
 
 	def translateTable(self):
 		pass
+
+	def __eq__(self, other):
+		if isinstance(other, self.__class__):
+			return self.__dict__ == other.__dict__
+		else:
+			return False
+
+	def __ne__(self, other):
+		if isinstance(other, self.__class__):
+			return self.__dict__ != other.__dict__
+		else:
+			return True
 
 	@staticmethod
 	def encode(data):
@@ -295,7 +445,7 @@ class DatabaseObject(object):
 
 				return ret
 
-			classLookup = {'Show':Show, 'Sequence':Sequence, 'Shot':Shot, 'Set':Set, 'Character':Character, 'Prop':Prop, 'Effect':Effect, 'Comp':Comp, 'Camera':Camera, 'Plate':Plate}
+			classLookup = {'Show':Show, 'Sequence':Sequence, 'Shot':Shot, 'Set':Set, 'Character':Character, 'Prop':Prop, 'Effect':Effect, 'Comp':Comp, 'Camera':Camera, 'Plate':Plate, 'WorkFile':WorkFile}
 			obj = classLookup.get(clazz)
 
 			if obj:
@@ -365,15 +515,7 @@ class ElementContainer(DatabaseObject):
 			self._elementTable[elType] = elTypeDict
 
 			if makeDirs:
-				seq = self.get('seq')
-				shot = self.get('num')
-
-				if not seq:
-					# Is a sequence
-					shot = None
-					seq = self.get('num')
-
-				diskLoc = el.getDiskLocation(seq=seq, shot=shot)
+				diskLoc = el.getDiskLocation()
 
 				if not os.path.exists(diskLoc):
 					os.makedirs(diskLoc)
@@ -439,7 +581,7 @@ class ElementContainer(DatabaseObject):
 
 		return [e for e in self.getElements() if e.get('pubVersion', -1) in version]
 
-	def destroyElement(self, elType, name):
+	def destroyElement(self, elType, name, clean=False):
 		"""Removes the element of the given type and name from the element table
 
 		Args:
@@ -450,7 +592,49 @@ class ElementContainer(DatabaseObject):
 			print 'Element {} doesn\'t exist'.format(name)
 			raise DatabaseError
 
-		self._elementTable[elType].pop(name)
+		el = self._elementTable[elType].pop(name)
+
+		if clean:
+			workDir = el.getDiskLocation(workDir=True)
+			relDir = el.getDiskLocation(workDir=False)
+
+			if os.path.exists(workDir):
+				shutil.rmtree(workDir)
+
+			if os.path.exists(relDir):
+				shutil.rmtree(relDir)
+
+	def diff(self, other, path=[]):
+		diffs = DiffSet()
+
+		path.append('elements')
+
+		for elType, elDict in self._elementTable.iteritems():
+			path.append(elType)
+
+			otherElDict = other._elementTable.get(elType)
+
+			if not elDict.keys() and not otherElDict.keys():
+				path.pop()
+				continue
+
+			selfEl, otherEl = zip(*list(itertools.izip_longest(elDict.keys(), otherElDict.keys(), fillvalue=None)))
+
+			for el, oEl in zip(selfEl, otherEl):
+				if el:
+					if el not in otherElDict.keys():
+						diffs.add(path, el, elDict, otherElDict, elDict.get(el), None)
+					else:
+						diffs.merge(elDict.get(el).diff(otherElDict.get(el), path))
+
+				if oEl and oEl not in elDict.keys():
+					diffs.add(path, oEl, elDict, otherElDict, None, otherElDict.get(oEl))
+
+			path.pop()
+
+		path.pop()
+
+		return diffs
 
 class Show(ElementContainer):
 
@@ -478,6 +662,12 @@ class Show(ElementContainer):
 
 		super(Show, self).translateTable()
 
+	def getDiskLocation(self, workDir=True):
+		baseDir = env.getEnvironment('work') if workDir else env.getEnvironment('release')
+		showDir = self.get('dirName')
+
+		return os.path.join(baseDir, showDir)
+
 	def addSequence(self, seq, force=False):
 		"""Adds the given database.Sequence to the sequence table.
 
@@ -493,10 +683,8 @@ class Show(ElementContainer):
 
 		if num not in self._seqTable or force:
 			self._seqTable[num] = seq
-			return True
 		else:
-			print 'Sequence {} already exists in database'.format(num)
-			return False
+			raise DatabaseError('Sequence {} already exists in database'.format(num))
 
 	def removeSequence(self, seqNum, clean=False):
 		"""Removes the sequence with the given number from this show, if it exists.
@@ -559,8 +747,23 @@ class Show(ElementContainer):
 		    tuple: A tuple of the sequence with the given number and the shot with the given number
 		"""
 		seq = self.getSequence(seqNum)
+		shot = seq.getShot(shotNum) if shotNum else None
 
-		return (seq, seq.getShot(shotNum))
+		return (seq, shot)
+
+	def getAllElements(self, elFilter=None):
+		els = self.getElements()
+
+		for seq in self.getSequences():
+			els.extend(seq.getElements())
+
+			for shot in seq.getShots():
+				els.extend(shot.getElements())
+
+		if elFilter:
+			els = [e for e in els if elFilter(e)]
+
+		return els
 
 	def getElement(self, elementType, elementName, seqNum=None, shotNum=None):
 		"""Gets the specified element type and name from the show. If a sequence and/or shot number are specified,
@@ -639,6 +842,81 @@ class Show(ElementContainer):
 
 		return os.path.join(baseDir, self.get('dirName'), seq.getDirectoryName(), shot.getDirectoryName())
 
+	def diff(self, other, path=[]):
+		diffs = DiffSet()
+
+		if type(self) != type(other):
+			raise ValueError('Can only perform diff between objects of the same type')
+
+		self.translateTable()
+		other.translateTable()
+
+		path.append(self.get('name'))
+
+		# First check our data dict keys to see if they:
+		# 1. Exist in "other"'s data dict
+		# 2. Match in value to "other"
+		for key, val in self._data.iteritems():
+			if key in ('sequences', 'elements'): # Skip for now
+				continue
+
+			otherVal = other._data.get(key)
+
+			if isinstance(val, list) and isinstance(otherVal, list):
+				path.append(key)
+
+				valTuple, otherValTuple = zip(*list(itertools.izip_longest(val, otherVal, fillvalue=None)))
+
+				for v, ov in zip(valTuple, otherValTuple):
+					if v != ov:
+						diffs.add(path, valTuple.index(v), val, otherVal, v, ov)
+
+				path.pop()
+			else:
+				if isinstance(otherVal, unicode):
+					otherVal = str(otherVal)
+				if isinstance(val, unicode):
+					val = str(val)
+				if otherVal != val:
+					diffs.add(path, key, self._data, other._data, val, otherVal)
+
+		# Do the same for other dict, but ignore keys that exist in
+		# the current data dict since we already added those differences
+		# in the last iteration. We just want keys in "other" that don't exist
+		# anymore in the current data dict.
+		for key, val in other._data.iteritems():
+			if key in ('sequences', 'elements'): # Skip for now
+				continue
+
+			if key not in self._data:
+				diffs.add(path, key, self._data, other._data, None, val)
+
+		if self._seqTable.keys() or other._seqTable.keys():
+			selfSeq, otherSeq = zip(*list(itertools.izip_longest(self._seqTable.keys(), other._seqTable.keys(), fillvalue=None)))
+
+			for seq, oSeq in zip(selfSeq, otherSeq):
+				path.append('sequences')
+
+				if seq:
+					if seq not in other._seqTable.keys():
+						diffs.add(path, seq, self._seqTable, other._seqTable, self._seqTable.get(seq), None)
+					else:
+						diffs.merge(self._seqTable.get(seq).diff(other._seqTable.get(seq), path))
+				if oSeq:
+					if oSeq not in self._seqTable.keys():
+						diffs.add(path, oSeq, self._seqTable, other._seqTable, None, other._seqTable.get(oSeq))
+					else:
+						pass
+						#diffs.merge(self._seqTable.get(seq).diff(other._seqTable.get(seq)))
+
+				path.pop()
+
+		diffs.merge(ElementContainer.diff(self, other, path))
+
+		path.pop()
+
+		return diffs
+
 	def __repr__(self):
 		return '{} ({})'.format(self.get('name', 'undefined'), ', '.join(self.get('aliases', [])))
 
@@ -682,10 +960,8 @@ class Sequence(ElementContainer):
 
 		if num not in self._shotTable or force:
 			self._shotTable[num] = shot
-			return True
 		else:
-			print 'Shot {} already exists in database'.format(num)
-			return False
+			raise DatabaseError('Shot {} already exists in database'.format(num))
 
 	def removeShot(self, shotNum, clean=False):
 		"""Removes the shot with the given number from this sequence, if it exists.
@@ -736,8 +1012,82 @@ class Sequence(ElementContainer):
 		"""
 		return self._shotTable.values()
 
+	def getDiskLocation(self, workDir=True):
+		baseDir = env.getEnvironment('work') if workDir else env.getEnvironment('release')
+		showDir = env.show.get('dirName')
+
+		return os.path.join(baseDir, showDir, self.getDirectoryName())
+
 	def getDirectoryName(self):
 		return fileutils.SEQUENCE_FORMAT.format(str(self.get('num', 0)).zfill(env.SEQUENCE_SHOT_PADDING))
+
+	def diff(self, other, path=[]):
+		diffs = DiffSet()
+
+		if type(self) != type(other):
+			raise ValueError('Can only perform diff between objects of the same type')
+
+		self.translateTable()
+		other.translateTable()
+
+		path.append(self.get('num'))
+
+		for key, val in self._data.iteritems():
+			if key in ('shots', 'elements'): # Skip for now
+				continue
+
+			otherVal = other._data.get(key)
+
+			if isinstance(val, list) and isinstance(otherVal, list):
+				path.append(key)
+
+				valTuple, otherValTuple = zip(*list(itertools.izip_longest(val, otherVal, fillvalue=None)))
+
+				for v, ov in zip(valTuple, otherValTuple):
+					if v != ov:
+						diffs.add(path, valTuple.index(v), val, otherVal, v, ov)
+
+				path.pop()
+			else:
+				if isinstance(otherVal, unicode):
+					otherVal = str(otherVal)
+				if isinstance(val, unicode):
+					val = str(val)
+				if otherVal != val:
+					diffs.add(path, key, self._data, other._data, val, otherVal)
+
+		# Do the same for other dict, but ignore keys that exist in
+		# the current data dict since we already added those differences
+		# in the last iteration. We just want keys in "other" that don't exist
+		# anymore in the current data dict.
+		for key, val in other._data.iteritems():
+			if key in ('shots', 'elements'): # Skip for now
+				continue
+
+			if key not in self._data:
+				diffs.add(path, key, self._data, other._data, None, val)
+
+		if self._shotTable.keys() or other._shotTable.keys():
+			selfShot, otherShot = zip(*list(itertools.izip_longest(self._shotTable.keys(), other._shotTable.keys(), fillvalue=None)))
+
+			for shot, oShot in zip(selfShot, otherShot):
+				path.append('shots')
+
+				if shot:
+					if shot not in other._shotTable.keys():
+						diffs.add(path, shot, self._shotTable, other._shotTable, self._shotTable.get(shot), None)
+					else:
+						diffs.merge(self._shotTable.get(shot).diff(other._shotTable.get(shot), path))
+				if oShot:
+					if oShot not in self._shotTable.keys():
+						diffs.add(path, oShot, self._shotTable, other._shotTable, None, other._shotTable.get(shot))
+
+				path.pop()
+
+		diffs.merge(ElementContainer.diff(self, other, path))
+		path.pop()
+
+		return diffs
 
 	def __repr__(self):
 		return 'Sequence {}'.format(self.get('num', -1))
@@ -755,11 +1105,150 @@ class Shot(ElementContainer):
 	def translateTable(self):
 		super(Shot, self).translateTable()
 
+	def getDiskLocation(self, workDir=True):
+		seq = env.show.getSequence(self.get('seq'))
+		seqDir = seq.getDiskLocation(workDir)
+
+		return os.path.join(seqDir, self.getDirectoryName())
+
 	def getDirectoryName(self):
-		return fileutils.SHOT_FORMAT.format(str(self.get('num', 0)).zfill(env.SEQUENCE_SHOT_PADDING))
+		ret = fileutils.SHOT_FORMAT.format(str(self.get('num', 0)).zfill(env.SEQUENCE_SHOT_PADDING))
+
+		if self.get('clipName'):
+			ret += '_' + self.get('clipName')
+
+		return ret
+
+	def diff(self, other, path=[]):
+		diffs = DiffSet()
+
+		if type(self) != type(other):
+			raise ValueError('Can only perform diff between objects of the same type')
+
+		self.translateTable()
+		other.translateTable()
+
+		path.append(self.get('num'))
+
+		for key, val in self._data.iteritems():
+			if key in ('elements'): # Skip for now
+				continue
+
+			otherVal = other._data.get(key)
+
+			if isinstance(val, list) and isinstance(otherVal, list):
+				path.append(key)
+
+				valTuple, otherValTuple = zip(*list(itertools.izip_longest(val, otherVal, fillvalue=None)))
+
+				for v, ov in zip(valTuple, otherValTuple):
+					if v != ov:
+						diffs.add(path, valTuple.index(v), val, otherVal, v, ov)
+
+				path.pop()
+			else:
+				if isinstance(otherVal, unicode):
+					otherVal = str(otherVal)
+				if isinstance(val, unicode):
+					val = str(val)
+				if otherVal != val:
+					diffs.add(path, key, self._data, other._data, val, otherVal)
+
+		# Do the same for other dict, but ignore keys that exist in
+		# the current data dict since we already added those differences
+		# in the last iteration. We just want keys in "other" that don't exist
+		# anymore in the current data dict.
+		for key, val in other._data.iteritems():
+			if key in ('elements'): # Skip for now
+				continue
+
+			if key not in self._data:
+				diffs.add(path, key, self._data, other._data, None, val)
+
+		diffs.merge(ElementContainer.diff(self, other, path))
+		path.pop()
+
+		return diffs
 
 	def __repr__(self):
-		return 'Shot {} in sequence {}'.format(self.get('num', -1), self.get('seq', -1))
+		return 'Shot {} ({})'.format(self.get('num', -1), self.get('clipName'))
+
+class WorkFile(DatabaseObject):
+	FILE_TYPES = {'nuke': 'nk', 'maya': 'ma', 'houdini': 'hipnc'}
+
+	def __init__(self, *args, **kwargs):
+		super(WorkFile, self).__init__(*args, **kwargs)
+
+	def getFileTypeForType(self, elType):
+		if elType in ('nuke', 'camera'):
+			return WorkFile.FILE_TYPES['nuke']
+		elif elType in ('prop', 'set', 'character'):
+			return WorkFile.FILE_TYPES['maya']
+		elif elType in ('effect'):
+			return WorkFile.FILE_TYPES['houdini']
+
+		return ''
+
+	def getVersions(self):
+		import OrderedDict
+
+		baseDir = os.path.join(os.path.expandvars(self.get('root')), *self.get('path'))
+
+		if not os.path.exists(baseDir):
+			os.makedirs(baseDir)
+
+		files = os.listdir(baseDir)
+		versions = {}
+
+		for f in files:
+			match = re.match(r'^({})[\._]v*(\d+)\..+$'.format(self.get('name')), f)
+
+			if match:
+				ver = int(match.group(2))
+				filesForVer = versions.get(ver, [])
+
+				filesForVer.append(os.path.join(baseDir, f))
+
+				versions[ver] = filesForVer
+
+		return OrderedDict(sorted(versions.items(), key=lambda t: t[0]))
+
+	def diff(self, other, path=[]):
+		diffs = DiffSet()
+
+		if type(self) != type(other):
+			raise ValueError('Can only perform diff between objects of the same type')
+
+		path.append(self.get('name'))
+
+		for key, val in self._data.iteritems():
+			otherVal = other._data.get(key)
+
+			if isinstance(val, list) and isinstance(otherVal, list):
+				path.append(key)
+
+				valTuple, otherValTuple = zip(*list(itertools.izip_longest(val, otherVal, fillvalue=None)))
+
+				for v, ov in zip(valTuple, otherValTuple):
+					if v != ov:
+						diffs.add(path, valTuple.index(v), val, otherVal, v, ov)
+
+				path.pop()
+			else:
+				if isinstance(otherVal, unicode):
+					otherVal = str(otherVal)
+				if isinstance(val, unicode):
+					val = str(val)
+				if otherVal != val:
+					diffs.add(path, key, self._data, other._data, val, otherVal)
+
+		for key, val in other._data.iteritems():
+			if key not in self._data:
+				diffs.add(path, key, self._data, other._data, None, val)
+
+		path.pop()
+
+		return diffs
 
 class Element(DatabaseObject):
 
@@ -788,6 +1277,22 @@ class Element(DatabaseObject):
 	CAMERA = 'camera'
 	PLATE = 'plate'
 	ELEMENT_TYPES = [SET, CHARACTER, PROP, TEXTURE, EFFECT, COMP, CAMERA, PLATE]
+
+	def getWorkFile(self):
+		elType = self.get('type')
+		wf = WorkFile(name=self.get('name'), root=fileutils.makeRelative(self.getDiskLocation(), 'work'), path=[])
+
+		wf.set('type', wf.getFileTypeForType(elType))
+
+		workFile = self.get('workFile', wf)
+
+		self.set('workFile', workFile)
+
+	def getPublishedVersions(self):
+		versionInfo = self.get('versionInfo', {})
+		versionSplit = [[version] + info.split('/') for version, info in versionInfo.iteritems()] # Gives us [[verNum1, user1, timestamp1], ...]
+
+		return versionSplit
 
 	def getFileName(self, sequence=False): # TODO: determine format for publish file name
 		"""Gets the file name of the element - that is the filename that the system will look for
@@ -847,19 +1352,16 @@ class Element(DatabaseObject):
 		Returns:
 		    bool: If the rollback succeeded or not.
 		"""
-
-		# TODO: Implement for sequence
-
 		relDir = self.getDiskLocation(workDir=False)
 		versionsDir = os.path.join(relDir, '.versions')
 		sequence = self.get('seq', 'False') == 'True'
 		baseName, ext = os.path.splitext(self.getFileName(sequence=sequence))
-		currVersion = self.get('pubVersion')
+		currVersion = self.get('pubVersion', -1)
 		currVersionFile = os.path.join(versionsDir, self.getVersionedFileName(versionNum=currVersion))
 		prevVersion = int(currVersion) - 1 if not version else version
 
 		if prevVersion < 1:
-			print 'Cannot rollback prior to version 1'
+			print 'Cannot rollback prior to version 1. Current version found: {}'.format(currVersion)
 			return False
 
 		if sequence:
@@ -922,8 +1424,7 @@ class Element(DatabaseObject):
 		versionsDir = os.path.join(relDir, '.versions')
 
 		if not self.get('ext'):
-			print 'Please set the expected extension first using "mod ext VALUE"'
-			return False
+			raise PublishError('Please set the expected extension first using "mod ext VALUE"')
 
 		if not os.path.exists(versionsDir):
 			os.makedirs(versionsDir)
@@ -931,7 +1432,7 @@ class Element(DatabaseObject):
 		fileName = self.getFileName()
 		workDirCopy = os.path.join(workDir, fileName)
 		version = self.get('version')
-		sequence = self.get('seq', 'False') == 'True'
+		sequence = self.get('seq', False) == True
 
 		print 'Publishing: {} (Sequence={})'.format(workDirCopy, sequence)
 
@@ -940,8 +1441,7 @@ class Element(DatabaseObject):
 			seq = glob.glob(workDirCopy)
 
 			if not seq:
-				print 'Could not find the expected sequence: {}'.format(os.path.join(workDir, '{}.{}.{}'.format(self.get('name'), '#' * env.FRAME_PADDING, self.get('ext'))))
-				return False
+				raise PublishError('Could not find the expected sequence: {}'.format(os.path.join(workDir, '{}.{}.{}'.format(self.get('name'), '#' * env.FRAME_PADDING, self.get('ext')))))
 
 			pubVersion = -1
 
@@ -976,8 +1476,7 @@ class Element(DatabaseObject):
 
 		if not os.path.exists(workDirCopy):
 			# Artist hasn't made a file that matches what we expect to publish
-			print 'Could not find the expected file: {}'.format(fileName)
-			return False
+			raise PublishError('Could not find the expected file: {}'.format(fileName))
 
 		baseName, ext = os.path.splitext(fileName)
 		versionedFileName = self.getVersionedFileName(versionNum=version, frameNum=frameNum)
@@ -999,7 +1498,7 @@ class Element(DatabaseObject):
 
 		version = self.get('version') if not version else version
 		versionInfo = self.get('versionInfo', {})
-		versionInfo[version] = '{}/{}'.format(*env.getCreationInfo()) # Timestamp and user info for publish
+		versionInfo[int(version) + 1] = '{}/{}'.format(*env.getCreationInfo()) # Timestamp and user info for publish
 
 		self.set('version', int(version) + 1)
 		self.set('versionInfo', versionInfo)
@@ -1086,17 +1585,13 @@ class Element(DatabaseObject):
 
 		return pubDate >= date
 
-	def getDiskLocation(self, workDir=True, seq=None, shot=None):
+	def getDiskLocation(self, workDir=True):
 		"""Gets the on disk location of where this element's files are stored. If workDir is False,
 		then the release directory path is returned. By default, the work directory path is returned.
 
 		Args:
 		    workDir (bool, optional): Whether or not to retrieve the work directory path of the element.
 		    	By default, is the work directory.
-		    seq (int, optional): The number of the specific sequence folder for this element. By default, will place
-				at the show level.
-			shot (int, optional): The number of the specific shot folder for this element. By default, will place
-				at the sequence level if seq was provided, otherwise will place at the show level.
 
 		Returns:
 		    str: The directory location of this element (either work or release depending on workDir)
@@ -1110,11 +1605,63 @@ class Element(DatabaseObject):
 		# be the only one of its kind in the directory, so it is less confusing overall for the end
 		# user. This is pretty hack at the moment and I'd like to revisit a new solution
 		nameDir = '' if name.startswith('__sq') else name
+		parent = self.get('parent', '')
 
-		if seq:
-			return os.path.join(baseDir, show.get('dirName'), fileutils.formatShotDir(seq, shot), self.get('type'), nameDir)
+		if parent:
+			seq, shot = parent.split('/')
+			s, sh = env.show.getShot(seq, shot)
+
+			if seq and shot:
+				return os.path.join(baseDir, show.get('dirName'), s.getDirectoryName(), sh.getDirectoryName(), self.get('type'), nameDir)
+			elif seq:
+				return os.path.join(baseDir, show.get('dirName'), s.getDirectoryName(), self.get('type'), nameDir)
 
 		return os.path.join(baseDir, show.get('dirName'), self.get('type'), nameDir)
+
+	def setParent(self, container):
+		if isinstance(container, Show):
+			self.set('parent', '')
+		elif isinstance(container, Sequence):
+			self.set('parent', '{}/'.format(container.get('num')))
+		elif isinstance(container, Shot):
+			self.set('parent', '{}/{}'.format(container.get('seq'), container.get('num')))
+
+	def diff(self, other, path=[]):
+		diffs = DiffSet()
+
+		if type(self) != type(other):
+			raise ValueError('Can only perform diff between objects of the same type')
+
+		path.append(self.get('name'))
+
+		for key, val in self._data.iteritems():
+			otherVal = other._data.get(key)
+
+			if isinstance(val, list) and isinstance(otherVal, list):
+				path.append(key)
+
+				valTuple, otherValTuple = zip(*list(itertools.izip_longest(val, otherVal, fillvalue=None)))
+
+				for v, ov in zip(valTuple, otherValTuple):
+					if v != ov:
+						diffs.add(path, valTuple.index(v), val, otherVal, v, ov)
+
+				path.pop()
+			else:
+				if isinstance(otherVal, unicode):
+					otherVal = str(otherVal)
+				if isinstance(val, unicode):
+					val = str(val)
+				if otherVal != val:
+					diffs.add(path, key, self._data, other._data, val, otherVal)
+
+		for key, val in other._data.iteritems():
+			if key not in self._data:
+				diffs.add(path, key, self._data, other._data, None, val)
+
+		path.pop()
+
+		return diffs
 
 	@staticmethod
 	def factory(elType, name):
@@ -1151,19 +1698,24 @@ class Element(DatabaseObject):
 			raise ValueError('Invalid element type specified')
 
 		user, time = env.getCreationInfo()
+		ext = env.cfg.config.get('Elements', 'default_ext_' + elType) if env.cfg.config.has_option('Elements', 'default_ext_' + elType) else ''
 
 		element.set('name', name)
-		element.set('ext', '')
+		element.set('ext', ext)
 		element.set('type', elType)
 		element.set('author', user)
 		element.set('creation', time)
 		element.set('version', 1)
-		element.set('seq', False)
+
+		if elType == 'plate':
+			element.set('seq', True)
+		else:
+			element.set('seq', False)
 
 		return element
 
 	def __repr__(self):
-		return '{} {}'.format(type(self).__name__.upper(), self.get('name', 'undefined'))
+		return '{} ({})'.format(self.get('name', 'undefined'), self.get('type'))
 
 class Set(Element):
 	pass
