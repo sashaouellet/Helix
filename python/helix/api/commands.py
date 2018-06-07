@@ -14,88 +14,82 @@ if not dbLoc:
 
 db = Database(dbLoc)
 perms = PermissionHandler()
-ERROR_BUBBLING = False
 
 # User commands
 def mkshow(showName):
+	perms.check('helix.create.show')
+	
 	show = Show(name=showName)
 
 	show.set('dirName', show.getSafeName())
+	db.addShow(show)
+	db.save()
 
-	if db.addShow(show) and db.save():
-		print 'Successfully created new show'
+	print 'Successfully created new show'
 
 def rmshow(showName, clean=False):
-	print 'You are about to delete the show: {}. {}Are you sure you want to proceed? (y/n) '.format(showName, 'All files on disk associated with the show will also be deleted. ' if clean else ''),
+	perms.check('helix.delete.show')
+	
+	show = db.removeShow(showName, clean)
 
-	resp = sys.stdin.readline().strip().lower()
+	if not show:
+		raise DatabaseError('Didn\'t recognize show: {}'.format(showName))
 
-	if resp in ('y', 'yes'):
-		show = db.removeShow(showName, clean)
+	db.save()
 
-		if not show:
-			print 'Didn\'t recognize show: {}'.format(showName)
-			return
-		elif db.save():
-			print 'Successfully removed show'
-	else:
-		return
+	print 'Successfully removed show'
 
 def mkseq(seqNum):
+	perms.check('helix.create.sequence')
+	
 	seq = Sequence(num=int(seqNum))
 
-	try:
-		env.show.addSequence(seq)
-		db.save()
-	except DatabaseError:
-		if ERROR_BUBBLING:
-			raise
-		else:
-			return
+	env.show.addSequence(seq)
+	db.save()
 
 def rmseq(seqNum, clean=False):
+	perms.check('helix.delete.sequence')
+
 	seq = env.show.removeSequence(int(seqNum), clean)
 
 	if not seq:
-		print 'Sequence {} doesn\'t exist'.format(seqNum)
-		return
-	elif db.save():
-		print 'Successfully removed sequence'
+		raise DatabaseError('Sequence {} doesn\'t exist'.format(seqNum))
+
+	db.save()
+
+	print 'Successfully removed sequence'
 
 def mkshot(seqNum, shotNum, start, end, clipName):
-	try:
-		seq = env.show.getSequence(seqNum)
-		shot = Shot(seq=int(seqNum), num=int(shotNum), start=int(start), end=int(end), clipName=clipName)
+	perms.check('helix.create.shot')
 
-		seq.addShot(shot)
-		db.save()
+	seq = env.show.getSequence(seqNum)
+	shot = Shot(seq=int(seqNum), num=int(shotNum), start=int(start), end=int(end), clipName=clipName)
 
-		print 'Successfully created shot'
-	except DatabaseError:
-		if ERROR_BUBBLING:
-			raise
-		else:
-			return
+	seq.addShot(shot)
+	db.save()
+
+	print 'Successfully created shot'
 
 def rmshot(seqNum, shotNum, clean=False):
-	try:
-		seq = env.show.getSequence(seqNum)
-		shot = seq.removeShot(int(shotNum), clean)
+	perms.check('helix.delete.shot')
 
-		if not shot:
-			print 'Shot {} doesn\'t exist for sequence {}'.format(shotNum, seqNum)
-			return
-		elif db.save():
-			print 'Successfully removed shot'
-	except DatabaseError:
-		return
+	seq = env.show.getSequence(seqNum)
+	shot = seq.removeShot(int(shotNum), clean)
+
+	if not shot:
+		raise DatabaseError('Shot {} doesn\'t exist for sequence {}'.format(shotNum, seqNum))
+
+	db.save()
+
+	print 'Successfully removed shot'
 
 def pop(showName):
+	perms.check('helix.pop')
+
 	show = db.getShow(showName)
 
 	if not show:
-		print 'Didn\'t recognize show: {}'.format(showName)
-		return
+		raise DatabaseError('Didn\'t recognize show: {}'.format(showName))
 
 	showName = show.get('name')
 
@@ -105,145 +99,125 @@ def pop(showName):
 	print 'Set environment for {}'.format(showName)
 
 def mke(elType, name, sequence=None, shot=None):
-	try:
-		container = env.show # Where to get element from
+	perms.check('helix.create.element')
 
-		if name == '-':
-			if not sequence or not shot:
-				print 'Sequence and shot must be specified if using "-" name option'
-				return
+	container = env.show # Where to get element from
 
-			name = '__sq{}s{}'.format(str(sequence).zfill(env.SEQUENCE_SHOT_PADDING), str(shot).zfill(env.SEQUENCE_SHOT_PADDING))
+	if name == '-':
+		if not sequence or not shot:
+			raise DatabaseError('Sequence and shot must be specified if using "-" name option')
 
-			print 'Internal name will now be: {}'.format(name)
+		name = '__sq{}s{}'.format(str(sequence).zfill(env.SEQUENCE_SHOT_PADDING), str(shot).zfill(env.SEQUENCE_SHOT_PADDING))
 
-		if sequence and shot:
-			_, container = env.show.getShot(sequence, shot)
-		elif sequence:
-			container = env.show.getSequence(sequence)
+		print 'Internal name will now be: {}'.format(name)
 
-		element = container.getElement(elType.lower(), name) # TODO sanitize name
+	if sequence and shot:
+		_, container = env.show.getShot(sequence, shot)
+	elif sequence:
+		container = env.show.getSequence(sequence)
 
-		if element:
-			if ERROR_BUBBLING:
-				raise DatabaseError('Element already exists')
-			else:
-				print 'Element already exists (did you mean to use "ge"?)'
-				return
+	element = container.getElement(elType.lower(), name) # TODO sanitize name
 
-		el = Element.factory(elType.lower(), name)
+	if element:
+		raise DatabaseError('Element already exists')
 
-		el.setParent(container)
-		container.addElement(el)
-		db.save()
-	except DatabaseError:
-		if ERROR_BUBBLING:
-			raise
-		else:
-			return
+	el = Element.factory(elType.lower(), name)
+
+	el.setParent(container)
+	container.addElement(el)
+	db.save()
 
 def get(elType, name, sequence=None, shot=None):
-	try:
-		if name == '-' and sequence and shot:
-			# Trying to get special element created earlier, reformat to internal name
-			name = '__sq{}s{}'.format(str(sequence).zfill(env.SEQUENCE_SHOT_PADDING), str(shot).zfill(env.SEQUENCE_SHOT_PADDING))
+	perms.check('helix.get')
 
-		element = env.show.getElement(elType.lower(), name, sequence, shot)
+	if name == '-' and sequence and shot:
+		# Trying to get special element created earlier, reformat to internal name
+		name = '__sq{}s{}'.format(str(sequence).zfill(env.SEQUENCE_SHOT_PADDING), str(shot).zfill(env.SEQUENCE_SHOT_PADDING))
 
-		if not element:
-			print 'Element doesn\'t exist (Check for typos in the name, or make a new element using "mke")'
-			return
+	element = env.show.getElement(elType.lower(), name, sequence, shot)
 
-		env.setEnvironment('element', element.getDiskLocation())
-		env.element = element
+	if not element:
+		raise DatabaseError('Element doesn\'t exist (Check for typos in the name, or make a new element)')
 
-		print 'Working on {}'.format(element)
+	env.setEnvironment('element', element.getDiskLocation())
+	env.element = element
 
-	except DatabaseError:
-		return
+	print 'Working on {}'.format(element)
 
 # Element-context commands
 def pub():
+	perms.check('helix.publish')
+
 	element = env.element
+	newVersion = element.versionUp()
 
-	try:
-		newVersion = element.versionUp()
-
-		db.save()
-		print 'Published new version: {}'.format(newVersion)
-	except PublishError:
-		if ERROR_BUBBLING:
-			raise
-		else:
-			return
+	db.save()
+	print 'Published new version: {}'.format(newVersion)
 
 def roll(version=None):
+	perms.check('helix.rollback')
+
 	element = env.element
 	newVersion = element.rollback(version=version)
 
-	if newVersion and db.save():
+	if newVersion:
+		db.save()
 		print 'Rolled back published file to version: {}'.format(newVersion)
 
 def mod(attribute, value=None):
 	element = env.element
 
 	if value:
-		try:
-			element.set(attribute, value)
+		perms.check('helix.mod.set')
+		element.set(attribute, value)
 
-			if db.save():
-				print 'Set {} to {}'.format(attribute, value)
-		except DatabaseError:
-			return
+		if db.save():
+			print 'Set {} to {}'.format(attribute, value)
 	else:
+		perms.check('helix.mod.get')
 		print element.get(attribute)
 
 def override(sequence=None, shot=None):
+	perms.check('helix.override')
 	if sequence and shot:
-		try:
-			seq, s = env.show.getShot(sequence, shot)
+		seq, s = env.show.getShot(sequence, shot)
 
-			if env.element.makeOverride(seq, s) and db.save():
-				print 'Created override for sequence {} shot {}'.format(sequence, shot)
-			else:
-				print 'Override creation failed'
-		except DatabaseError:
-			return
+		if env.element.makeOverride(seq, s) and db.save():
+			print 'Created override for sequence {} shot {}'.format(sequence, shot)
+		else:
+			print 'Override creation failed'
 	elif sequence:
-		try:
-			seq = env.show.getSequence(sequence)
+		seq = env.show.getSequence(sequence)
 
-			if env.element.makeOverride(seq) and db.save():
-				print 'Created override for sequence {}'.format(sequence)
-			else:
-				print 'Override creation failed'
-		except DatabaseError:
-			return
+		if env.element.makeOverride(seq) and db.save():
+			print 'Created override for sequence {}'.format(sequence)
+		else:
+			print 'Override creation failed'
 	else:
 		# User is looking for overrides of the current element
-		try:
-			overrides = env.element.getOverrides()
+		overrides = env.element.getOverrides()
 
-			print 'Sequence overrides:'
+		print 'Sequence overrides:'
 
-			if overrides[0]:
-				print '\n'.join([str(s) for s in overrides[0]])
-			else:
-				print 'None'
+		if overrides[0]:
+			print '\n'.join([str(s) for s in overrides[0]])
+		else:
+			print 'None'
 
-			print 'Shot overrides:'
+		print 'Shot overrides:'
 
-			if overrides[1]:
-				print '\n'.join([str(s) for s in overrides[1]])
-			else:
-				print 'None'
-		except DatabaseError:
-			return
+		if overrides[1]:
+			print '\n'.join([str(s) for s in overrides[1]])
+		else:
+			print 'None'
 
 def createFile(name=None):
-	env.element.getWorkFile()
-	return
-	elType = env.element.get('type')
+	wf = env.element.getWorkFile()
+
+	if wf.exists():
+		pass
+	else:
+		wf.createBlank()
 
 	if elType in ('nuke', 'camera'):
 		fileName, version = nuke.getFile(env.element, name=name)
@@ -275,20 +249,21 @@ def createFile(name=None):
 		houdini.openFile(str(fileName))
 
 def shows():
+	perms.check('helix.view.show')
 	print '\n'.join([str(s) for s in db.getShows()])
 
 def sequences():
+	perms.check('helix.view.sequence')
 	print '\n'.join([str(s) for s in sorted(env.show.getSequences(), key=lambda x: x.get('num'))])
 
 def shots(seqNum):
-	try:
-		seq = env.show.getSequence(seqNum)
+	perms.check('helix.view.shot')
+	seq = env.show.getSequence(seqNum)
 
-		print '\n'.join([str(s) for s in sorted(seq.getShots(), key=lambda x: x.get('num'))])
-	except DatabaseError:
-		return
+	print '\n'.join([str(s) for s in sorted(seq.getShots(), key=lambda x: x.get('num'))])
 
 def elements(elType=None, sequence=None, shot=None, date=None):
+	perms.check('helix.view.element')
 	if elType:
 		elType = elType.split(',')
 
@@ -316,31 +291,31 @@ def elements(elType=None, sequence=None, shot=None, date=None):
 	print '\n'.join([str(el) for el in els])
 
 def rme(elType, name, sequence=None, shot=None, clean=False):
-	try:
-		container = env.show # Where to get element from
+	perms.check('helix.delete.element')
+	container = env.show # Where to get element from
 
-		if sequence and shot:
-			_, container = env.show.getShot(sequence, shot)
-		elif sequence:
-			container = env.show.getSequence(sequence)
+	if sequence and shot:
+		_, container = env.show.getShot(sequence, shot)
+	elif sequence:
+		container = env.show.getSequence(sequence)
 
-		element = container.getElement(elType.lower(), name) # TODO sanitize name
+	element = container.getElement(elType.lower(), name) # TODO sanitize name
 
-		container.destroyElement(elType, name, clean)
+	container.destroyElement(elType, name, clean)
 
-		if db.save():
-			print 'Successfully removed element {}'.format(element)
-	except DatabaseError:
-		return
+	if db.save():
+		print 'Successfully removed element {}'.format(element)
 
 # Debug and dev commands
 def dump(expanded=False):
+	perms.check('helix.dump')
 	if expanded:
 		print DatabaseObject.encode(db._data)
 	else:
 		print db._data
 
 def getenv():
+	perms.check('helix.getenv')
 	print env.getAllEnv()
 
 def main(cmd, argv):
@@ -367,8 +342,14 @@ def main(cmd, argv):
 		parser.add_argument('--clean', '-c', action='store_true', help='Remove associated files/directories for this show')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
+		showName = args['showName']
 
-		rmshow(**args)
+		print 'You are about to delete the show: {}. {}Are you sure you want to proceed? (y/n) '.format(showName, 'All files on disk associated with the show will also be deleted. ' if clean else ''),
+
+		resp = sys.stdin.readline().strip().lower()
+
+		if resp in ('y', 'yes'):
+			rmshow(**args)
 	elif cmd == 'mkseq':
 		if not env.getEnvironment('show'):
 			print 'Please pop into a show first'
@@ -586,6 +567,10 @@ def main(cmd, argv):
 
 		print element
 	elif cmd == 'help' or cmd == 'h' or cmd == '?':
+		if not os.path.exists(env.getEnvironment('HELP')):
+			print 'Helix help has not been properly configured'
+			return
+
 		with open(env.getEnvironment('HELP')) as file:
 			line = file.readline()
 
@@ -630,16 +615,13 @@ def handleInput(line):
 		cmd = argv[0]
 
 		try:
-			if perms.canExecute(cmd):
-				main(cmd, argv[1:])
-			else:
-				print 'You don\'t have permission to do this'
-		except DatabaseError:
-			return
+			main(cmd, argv[1:])
 		except SystemExit as e:
 			# I really don't like this, but not sure how to handle
 			# the exception argparse raises when typing an invalid command
 			pass
+		except HelixException as e:
+			print str(e)
 
 if __name__ == '__main__':
 	if len(sys.argv) > 2:

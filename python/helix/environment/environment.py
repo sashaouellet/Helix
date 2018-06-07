@@ -1,5 +1,6 @@
 import os
 from helix.environment.config import GeneralConfigHandler
+# from helix.database.database import HelixException
 
 VAR_PREFIX = 'HELIX_'
 
@@ -7,7 +8,15 @@ def setEnvironment(var, value):
 	os.environ[VAR_PREFIX + var.upper()] = value
 
 def getEnvironment(var):
-	return os.environ.get(VAR_PREFIX + var.upper())
+	env = os.environ.get(VAR_PREFIX + var.upper())
+
+	if not env:
+		raise EnvironmentError('Variable {} not set'.format(env))
+
+	return env
+
+def EnvironmentError(HelixException):
+	pass
 
 def getAllEnv():
 	ret = {}

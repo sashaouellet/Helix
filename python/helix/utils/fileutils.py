@@ -9,10 +9,22 @@ SHOT_FORMAT = 's{}'
 def makeRelative(path, envVar):
 	envValue = env.getEnvironment(envVar)
 
-	if not envValue:
-		return path
-
 	return path.replace(envValue, '${}{}'.format(env.VAR_PREFIX, envVar.upper()))
+
+def expand(path):
+	parts = path.split(os.path.sep)
+	newParts = []
+
+	for p in parts:
+		if p.startswith('$' + env.VAR_PREFIX):
+			p = p.replace('$' + env.VAR_PREFIX, '')
+			repl = env.getEnvironment(p)
+
+			newParts.append(repl)
+		else:
+			newParts.append(p)
+
+	return os.path.sep.join(newParts)
 
 def openPathInExplorer(path):
 	import platform, subprocess

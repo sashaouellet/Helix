@@ -56,7 +56,7 @@ class Database(object):
 	def _makeTables(self):
 		"""The default "data" table contains simply a list of shows, this
 		function translates that table into a convenience lookup table keying
-		each show's name to the database.Show object
+		each show's name to the database.
 		"""
 		self._showTable = {}
 		shows = self._data.get('shows', [])
@@ -119,10 +119,8 @@ class Database(object):
 
 		if showName not in self._showTable or force:
 			self._showTable[showName] = show
-			return True
 		else:
-			print 'Show {} already exists in database'.format(showName)
-			return False
+			raise DatabaseError('Show {} already exists in database'.format(showName))
 
 	def removeShow(self, showName, clean=False):
 		"""Removes the show with the given name from the database, if it exists.
@@ -196,6 +194,7 @@ class Database(object):
 			self._origData = copy.deepcopy(self._data)
 
 		print 'Done saving'
+		return result
 
 	def _hasMergeConflicts(self):
 		"""Checks to see if the current version of the on-disk database has received
@@ -292,18 +291,25 @@ class Database(object):
 			# Can go through with our local changes since nothing was changed on disk
 			return (False, ondiskDiffs, localDiffs, latestDiffs)
 
-class DatabaseError(Exception):
+class HelixException(BaseException):
+	pass
 
+class DatabaseError(HelixException):
 	"""Defines an error that took place with certain database operations. This custom error
 	is necessary for certain try statements so that we do not preemptively quit while the user
 	is operating on elements, shots, etc.
 	"""
 	pass
 
-class MergeConflictError(Exception):
+class MergeConflictError(HelixException):
+	"""Represents an error that occurs during attempting the save the Database object. Any conflicting changes
+	with what is on disk vs. in memory will raise this error.
+	"""
 	pass
 
-class PublishError(Exception):
+class PublishError(HelixException):
+	"""Represents an error that occurs during publishing, i.e. the publish file not being found
+	"""
 	pass
 
 class DatabaseObject(object):
@@ -519,11 +525,8 @@ class ElementContainer(DatabaseObject):
 
 				if not os.path.exists(diskLoc):
 					os.makedirs(diskLoc)
-
-			return True
 		else:
-			print 'Element {} ({}) already exists in database'.format(name, elType)
-			return False
+			raise DatabaseError('Element {} ({}) already exists in database'.format(name, elType))
 
 	def getElement(self, elementType, elementName):
 		"""Gets the specified element type and name from this container.
@@ -540,9 +543,7 @@ class ElementContainer(DatabaseObject):
 		"""
 
 		if elementType not in Element.ELEMENT_TYPES:
-			print 'Element type specified ({}) does not exist'.format(elementType)
-			print 'Must be one of: {}'.format(', '.join(Element.ELEMENT_TYPES))
-			raise DatabaseError
+			raise DatabaseError('Element type specified ({}) does not exist. Must be one of: {}'.format(elementType, ', '.join(Element.ELEMENT_TYPES)))
 
 		return self._elementTable[elementType].get(elementName)
 
@@ -1179,6 +1180,24 @@ class WorkFile(DatabaseObject):
 	def __init__(self, *args, **kwargs):
 		super(WorkFile, self).__init__(*args, **kwargs)
 
+		elType = kwargs.get('elType')
+
+		self.set('version', self.getVersionNumberFromName())
+
+		if not self.get('type') and elType:
+			self.set('type', self.getFileTypeForType(elType))
+
+		if not self.get('path'):
+			self.set('path', os.path.join(self.get('root'), self.get('name')))
+
+	def getVersionNumberFromName(self):
+		match = re.match(r'[\._]v*(\d+)\..+$', self.get('name'))
+
+		if match:
+			return int(match.group(1))
+
+		return 1
+
 	def getFileTypeForType(self, elType):
 		if elType in ('nuke', 'camera'):
 			return WorkFile.FILE_TYPES['nuke']
@@ -1189,10 +1208,13 @@ class WorkFile(DatabaseObject):
 
 		return ''
 
+	def exists(self):
+		return os.path.exists(fileutils.expand(self.get('path')))
+
 	def getVersions(self):
 		import OrderedDict
 
-		baseDir = os.path.join(os.path.expandvars(self.get('root')), *self.get('path'))
+		baseDir = os.path.join(fileutils.expand(self.get('root')))
 
 		if not os.path.exists(baseDir):
 			os.makedirs(baseDir)
@@ -1280,13 +1302,12 @@ class Element(DatabaseObject):
 
 	def getWorkFile(self):
 		elType = self.get('type')
-		wf = WorkFile(name=self.get('name'), root=fileutils.makeRelative(self.getDiskLocation(), 'work'), path=[])
-
-		wf.set('type', wf.getFileTypeForType(elType))
-
+		wf = WorkFile(name=self.get('name'), elType=self.get('type'), root=fileutils.makeRelative(self.getDiskLocation(), 'work'))
 		workFile = self.get('workFile', wf)
 
 		self.set('workFile', workFile)
+
+		return workFile
 
 	def getPublishedVersions(self):
 		versionInfo = self.get('versionInfo', {})
@@ -1361,16 +1382,14 @@ class Element(DatabaseObject):
 		prevVersion = int(currVersion) - 1 if not version else version
 
 		if prevVersion < 1:
-			print 'Cannot rollback prior to version 1. Current version found: {}'.format(currVersion)
-			return False
+			raise PublishError('Cannot rollback prior to version 1. Current version found: {}'.format(currVersion))
 
 		if sequence:
 			prevVersionFile = os.path.join(versionsDir, '{}.v{}{}'.format(baseName, str(prevVersion).zfill(env.VERSION_PADDING), ext))
 			prevSeq = glob.glob(prevVersionFile)
 
 			if not prevSeq:
-				print 'Rollback failed. Rollback version files are missing: {}'.format(prevVersionFile)
-				return False
+				raise PublishError('Rollback failed. Rollback version files are missing: {}'.format(prevVersionFile))
 
 			for file in prevSeq:
 				fileName = os.path.split(file)[1]
@@ -1391,8 +1410,7 @@ class Element(DatabaseObject):
 			prevVersionFile = os.path.join(versionsDir, self.getVersionedFileName(versionNum=prevVersion))
 
 			if not os.path.exists(prevVersionFile):
-				print 'Rollback failed. Rollback version file is missing: {}'.format(prevVersionFile)
-				return False
+				raise PublishError('Rollback failed. Rollback version file is missing: {}'.format(prevVersionFile))
 
 			versionlessFile = os.path.join(relDir, '{}{}'.format(baseName, ext))
 
@@ -1531,7 +1549,7 @@ class Element(DatabaseObject):
 				self.set('overrides', overrides)
 				return True
 			else:
-				return False
+				raise DatabaseError()
 		elif seq:
 			# Only sequence specified
 			self.translateTable()
@@ -1625,6 +1643,20 @@ class Element(DatabaseObject):
 			self.set('parent', '{}/'.format(container.get('num')))
 		elif isinstance(container, Shot):
 			self.set('parent', '{}/{}'.format(container.get('seq'), container.get('num')))
+
+	def getContainer(self):
+		parent = self.get('parent', '')
+
+		if parent:
+			seq, shot = parent.split('/')
+			s, sh = env.show.getShot(seq, shot)
+
+			if seq and shot:
+				return (s, sh)
+			elif seq:
+				return s
+
+		return env.show
 
 	def diff(self, other, path=[]):
 		diffs = DiffSet()
