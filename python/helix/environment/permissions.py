@@ -27,18 +27,37 @@ class PermissionHandler(object):
 			self.permNodes = cfg.config.get('Permissions', 'defaultgroup')
 
 	def check(self, node):
+		# First check negated node, since that would override anything else
+		if '^' + node in self.permNodes:
+			raise PermissionError('You don\'t have permission to do this')
+
 		if node in self.permNodes:
 			return True
 
-		permGroups = node.split('.')
+		wildcards = self.toWildcard(node)
+		negWildcards = ['^' + w for w in wildcards]
 
-		for i in range(0, len(permGroups) - 1):
-			wildCard = permGroups[0:i+1] + ['*']
+		# First check negated wildcard nodes
+		for nw in negWildcards:
+			if nw in self.permNodes:
+				raise PermissionError('You don\'t have permission to do this')
 
-			if '.'.join(wildCard) in self.permNodes:
+		for w in wildcards:
+			if w in self.permNodes:
 				return True
 
 		raise PermissionError('You don\'t have permission to do this')
+
+	def toWildcard(self, node):
+		permGroups = node.split('.')
+		wildcards = []
+
+		for i in range(0, len(permGroups) - 1):
+			partial = permGroups[0:i+1] + ['*']
+
+			wildcards.append('.'.join(partial))
+
+		return wildcards
 
 	def group(self):
 		return self.group
