@@ -1,6 +1,4 @@
 import os
-from helix.environment.config import GeneralConfigHandler
-# from helix.database.database import HelixException
 
 VAR_PREFIX = 'HELIX_'
 
@@ -18,6 +16,9 @@ def getEnvironment(var):
 def EnvironmentError(HelixException):
 	pass
 
+def getConfigPath():
+	return os.path.join(getEnvironment('home'), 'config.ini')
+
 def getAllEnv():
 	ret = {}
 
@@ -33,17 +34,8 @@ def getCreationInfo():
 	return (getpass.getuser(), datetime.datetime.now().strftime(DATE_FORMAT))
 
 def getConfig():
-	configPath = getEnvironment('config')
-	exists = False
-
-	if not configPath:
-		print 'HELIX_CONFIG environment variable not set, defaulting configuration'
-
-		configPath = os.path.join(getEnvironment('home'), 'config.ini')
-
-	exists = os.path.exists(configPath)
-
-	return GeneralConfigHandler(*os.path.split(configPath), existingConfig=exists)
+	from helix.environment.config import GeneralConfigHandler
+	return GeneralConfigHandler()
 
 cfg = getConfig()
 

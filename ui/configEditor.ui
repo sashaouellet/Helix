@@ -1,0 +1,630 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>Dialog</class>
+ <widget class="QDialog" name="Dialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>538</width>
+    <height>638</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Helix Config</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QTabWidget" name="tabs">
+     <property name="currentIndex">
+      <number>0</number>
+     </property>
+     <widget class="QWidget" name="tab">
+      <attribute name="title">
+       <string>General</string>
+      </attribute>
+      <layout class="QFormLayout" name="formLayout">
+       <property name="fieldGrowthPolicy">
+        <enum>QFormLayout::ExpandingFieldsGrow</enum>
+       </property>
+       <property name="labelAlignment">
+        <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+       </property>
+       <item row="0" column="0">
+        <widget class="QLabel" name="label">
+         <property name="toolTip">
+          <string>The formatting for all date/time values in the system (i.e. when publishing) do not change unless you know what you are doing (see http://strftime.org/)</string>
+         </property>
+         <property name="text">
+          <string>Date Format</string>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="1">
+        <widget class="QLineEdit" name="LNE_dateFormat">
+         <property name="text">
+          <string/>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="0">
+        <widget class="QLabel" name="label_2">
+         <property name="toolTip">
+          <string>The expected frame padding for image sequences in the system</string>
+         </property>
+         <property name="text">
+          <string>Frame Padding</string>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="1">
+        <widget class="QSpinBox" name="SPN_framePadding">
+         <property name="suffix">
+          <string/>
+         </property>
+         <property name="minimum">
+          <number>1</number>
+         </property>
+         <property name="maximum">
+          <number>10</number>
+         </property>
+         <property name="value">
+          <number>1</number>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="0">
+        <widget class="QLabel" name="label_3">
+         <property name="toolTip">
+          <string>Number padding for versions when publishing</string>
+         </property>
+         <property name="text">
+          <string>Version Padding</string>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="1">
+        <widget class="QSpinBox" name="SPN_versionPadding">
+         <property name="minimum">
+          <number>1</number>
+         </property>
+         <property name="maximum">
+          <number>10</number>
+         </property>
+         <property name="value">
+          <number>1</number>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="0">
+        <widget class="QLabel" name="label_4">
+         <property name="toolTip">
+          <string>The number padding for sequence/shot folders</string>
+         </property>
+         <property name="text">
+          <string>Sequence/Shot Padding</string>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="1">
+        <widget class="QSpinBox" name="SPN_seqShotPadding">
+         <property name="minimum">
+          <number>1</number>
+         </property>
+         <property name="maximum">
+          <number>10</number>
+         </property>
+         <property name="value">
+          <number>1</number>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="tab_2">
+      <attribute name="title">
+       <string>Users / Permissions</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="verticalLayout_3">
+       <item>
+        <widget class="QGroupBox" name="groupBox">
+         <property name="title">
+          <string>Groups</string>
+         </property>
+         <layout class="QVBoxLayout" name="verticalLayout_5">
+          <item>
+           <widget class="QListWidget" name="LST_groups"/>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_11">
+            <item>
+             <spacer name="horizontalSpacer">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+            <item>
+             <widget class="QPushButton" name="BTN_addGroup">
+              <property name="text">
+               <string>Add</string>
+              </property>
+              <property name="autoDefault">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="BTN_removeGroup">
+              <property name="enabled">
+               <bool>false</bool>
+              </property>
+              <property name="text">
+               <string>Remove</string>
+              </property>
+              <property name="autoDefault">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="GRP_users">
+         <property name="enabled">
+          <bool>true</bool>
+         </property>
+         <property name="title">
+          <string>Users in Group</string>
+         </property>
+         <layout class="QVBoxLayout" name="verticalLayout_4">
+          <item>
+           <widget class="QListWidget" name="LST_users">
+            <property name="enabled">
+             <bool>true</bool>
+            </property>
+            <property name="selectionMode">
+             <enum>QAbstractItemView::ExtendedSelection</enum>
+            </property>
+            <item>
+             <property name="text">
+              <string>Users who are not in a group are considered a part of this one</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_12">
+            <item>
+             <spacer name="horizontalSpacer_3">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+            <item>
+             <widget class="QPushButton" name="BTN_addUser">
+              <property name="enabled">
+               <bool>true</bool>
+              </property>
+              <property name="text">
+               <string>Add</string>
+              </property>
+              <property name="autoDefault">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="BTN_removeUser">
+              <property name="enabled">
+               <bool>true</bool>
+              </property>
+              <property name="text">
+               <string>Remove</string>
+              </property>
+              <property name="autoDefault">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="groupBox_2">
+         <property name="title">
+          <string>Group Permissions</string>
+         </property>
+         <layout class="QVBoxLayout" name="verticalLayout_6">
+          <item>
+           <widget class="QListWidget" name="LST_perms">
+            <property name="selectionMode">
+             <enum>QAbstractItemView::ExtendedSelection</enum>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_13">
+            <item>
+             <spacer name="horizontalSpacer_4">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+            <item>
+             <widget class="QPushButton" name="BTN_addPerm">
+              <property name="text">
+               <string>Add</string>
+              </property>
+              <property name="autoDefault">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="BTN_removePerm">
+              <property name="text">
+               <string>Remove</string>
+              </property>
+              <property name="autoDefault">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="tab_3">
+      <attribute name="title">
+       <string>Executables</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="verticalLayout_2">
+       <item>
+        <widget class="QGroupBox" name="GRP_linux">
+         <property name="title">
+          <string>Linux</string>
+         </property>
+         <property name="checkable">
+          <bool>true</bool>
+         </property>
+         <layout class="QFormLayout" name="formLayout_2">
+          <property name="fieldGrowthPolicy">
+           <enum>QFormLayout::ExpandingFieldsGrow</enum>
+          </property>
+          <property name="labelAlignment">
+           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+          </property>
+          <item row="0" column="0">
+           <widget class="QLabel" name="label_5">
+            <property name="text">
+             <string>Maya</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <layout class="QHBoxLayout" name="horizontalLayout_2">
+            <item>
+             <widget class="QLineEdit" name="LNE_mayaLinux"/>
+            </item>
+            <item>
+             <widget class="QPushButton" name="BTN_mayaLinux">
+              <property name="text">
+               <string>...</string>
+              </property>
+              <property name="autoDefault">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="label_6">
+            <property name="text">
+             <string>Houdini</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <layout class="QHBoxLayout" name="horizontalLayout_3">
+            <item>
+             <widget class="QLineEdit" name="LNE_houdiniLinux"/>
+            </item>
+            <item>
+             <widget class="QPushButton" name="BTN_houdiniLinux">
+              <property name="text">
+               <string>...</string>
+              </property>
+              <property name="autoDefault">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="label_7">
+            <property name="text">
+             <string>Nuke</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <layout class="QHBoxLayout" name="horizontalLayout_4">
+            <item>
+             <widget class="QLineEdit" name="LNE_nukeLinux"/>
+            </item>
+            <item>
+             <widget class="QPushButton" name="BTN_nukeLinux">
+              <property name="text">
+               <string>...</string>
+              </property>
+              <property name="autoDefault">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="GRP_windows">
+         <property name="title">
+          <string>Windows</string>
+         </property>
+         <property name="checkable">
+          <bool>true</bool>
+         </property>
+         <layout class="QFormLayout" name="formLayout_4">
+          <property name="fieldGrowthPolicy">
+           <enum>QFormLayout::ExpandingFieldsGrow</enum>
+          </property>
+          <item row="0" column="0">
+           <widget class="QLabel" name="label_8">
+            <property name="text">
+             <string>Maya</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <layout class="QHBoxLayout" name="horizontalLayout_5">
+            <item>
+             <widget class="QLineEdit" name="LNE_mayaWin"/>
+            </item>
+            <item>
+             <widget class="QPushButton" name="BTN_mayaWin">
+              <property name="text">
+               <string>...</string>
+              </property>
+              <property name="autoDefault">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="label_9">
+            <property name="text">
+             <string>Houdini</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <layout class="QHBoxLayout" name="horizontalLayout_7">
+            <item>
+             <widget class="QLineEdit" name="LNE_houdiniWin"/>
+            </item>
+            <item>
+             <widget class="QPushButton" name="BTN_houdiniWin">
+              <property name="text">
+               <string>...</string>
+              </property>
+              <property name="autoDefault">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="label_10">
+            <property name="text">
+             <string>Nuke</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <layout class="QHBoxLayout" name="horizontalLayout_6">
+            <item>
+             <widget class="QLineEdit" name="LNE_nukeWin"/>
+            </item>
+            <item>
+             <widget class="QPushButton" name="BTN_nukeWin">
+              <property name="text">
+               <string>...</string>
+              </property>
+              <property name="autoDefault">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="GRP_mac">
+         <property name="title">
+          <string>Mac</string>
+         </property>
+         <property name="checkable">
+          <bool>true</bool>
+         </property>
+         <property name="checked">
+          <bool>false</bool>
+         </property>
+         <layout class="QFormLayout" name="formLayout_3">
+          <property name="fieldGrowthPolicy">
+           <enum>QFormLayout::ExpandingFieldsGrow</enum>
+          </property>
+          <item row="0" column="0">
+           <widget class="QLabel" name="label_11">
+            <property name="text">
+             <string>Maya</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <layout class="QHBoxLayout" name="horizontalLayout_9">
+            <item>
+             <widget class="QLineEdit" name="LNE_mayaMac"/>
+            </item>
+            <item>
+             <widget class="QPushButton" name="BTN_mayaMac">
+              <property name="text">
+               <string>...</string>
+              </property>
+              <property name="autoDefault">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="label_12">
+            <property name="text">
+             <string>Houdini</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <layout class="QHBoxLayout" name="horizontalLayout_10">
+            <item>
+             <widget class="QLineEdit" name="LNE_houdiniMac"/>
+            </item>
+            <item>
+             <widget class="QPushButton" name="BTN_houdiniMac">
+              <property name="text">
+               <string>...</string>
+              </property>
+              <property name="autoDefault">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="label_13">
+            <property name="text">
+             <string>Nuke</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <layout class="QHBoxLayout" name="horizontalLayout_8">
+            <item>
+             <widget class="QLineEdit" name="LNE_nukeMac"/>
+            </item>
+            <item>
+             <widget class="QPushButton" name="BTN_nukeMac">
+              <property name="text">
+               <string>...</string>
+              </property>
+              <property name="autoDefault">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayout">
+     <item>
+      <widget class="QCheckBox" name="CHK_lockFile">
+       <property name="toolTip">
+        <string>Makes the on-disk config file read-only so that it can only be edited via this dialog, which requires the &quot;helix.config&quot; permission</string>
+       </property>
+       <property name="text">
+        <string>Lock config file</string>
+       </property>
+       <property name="checked">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="horizontalSpacer_2">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="BTN_cancel">
+       <property name="text">
+        <string>Cancel</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="BTN_save">
+       <property name="text">
+        <string>Save</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

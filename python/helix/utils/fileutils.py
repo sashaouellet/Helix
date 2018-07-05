@@ -1,4 +1,4 @@
-import os, re
+import os, re, shutil
 import helix.environment.environment as env
 
 cfg = env.getConfig()
@@ -10,6 +10,24 @@ def makeRelative(path, envVar):
 	envValue = env.getEnvironment(envVar)
 
 	return path.replace(envValue, '${}{}'.format(env.VAR_PREFIX, envVar.upper()))
+
+def pathIsRelativeTo(path, dir):
+	if not os.path.isdir(dir):
+		raise ValueError('Can only check for relative locations against directories, {} is not a directory.'.format(dir))
+
+	return path.startswith(dir)
+
+def parseFilePath(filePath):
+	fileName = os.path.split(filePath)[1]
+	match = re.match(r'^([\w\-_]+)([\._]v*(\d+))?\..+$', fileName)
+
+	if match:
+		_, ext = os.path.splitext(fileName)
+
+		# (baseName without version number or ext, versionString, ext)
+		return (match.group(1), match.group(3), ext)
+
+	return (None, None, None)
 
 def expand(path):
 	parts = path.split(os.path.sep)
@@ -25,6 +43,50 @@ def expand(path):
 			newParts.append(p)
 
 	return os.path.sep.join(newParts)
+
+def copytree(src, dst, symlinks=False, ignore=None):
+	"""Reimplementation that doesn't fail when the directories
+	already exist.
+	"""
+	names = os.listdir(src)
+	if ignore is not None:
+		ignored_names = ignore(src, names)
+	else:
+		ignored_names = set()
+
+	if not os.path.exists(dst):
+		os.makedirs(dst)
+
+	errors = []
+	for name in names:
+		if name in ignored_names:
+			continue
+		srcname = os.path.join(src, name)
+		dstname = os.path.join(dst, name)
+		try:
+			if symlinks and os.path.islink(srcname):
+				linkto = os.readlink(srcname)
+				os.symlink(linkto, dstname)
+			elif os.path.isdir(srcname):
+				copytree(srcname, dstname, symlinks, ignore)
+			else:
+				shutil.copy2(srcname, dstname)
+			# XXX What about devices, sockets etc.?
+		except (IOError, os.error) as why:
+			errors.append((srcname, dstname, str(why)))
+		# catch the Error from the recursive copytree so that we can
+		# continue with other files
+		except shutil.Error as err:
+			errors.extend(err.args[0])
+	try:
+		shutil.copystat(src, dst)
+	except WindowsError:
+		# can't copy file access times on Windows
+		pass
+	except OSError as why:
+		errors.extend((src, dst, str(why)))
+	if errors:
+		raise shutil.Error(errors)
 
 def openPathInExplorer(path):
 	import platform, subprocess
@@ -74,13 +136,13 @@ def sanitize(input):
 	characters.
 
 	Args:
-	    input (str): The string to clean
+		input (str): The string to clean
 
 	Returns:
-	    str: The clean string
+		str: The clean string
 
 	Raises:
-	    ValueError: If the input is not a string
+		ValueError: If the input is not a string
 	"""
 	if not isinstance(input, str):
 		raise ValueError('Can only clean strings')

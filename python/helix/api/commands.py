@@ -1,11 +1,9 @@
-import sys, os, shlex
+import sys, os, shlex, shutil
 import argparse
 import helix.environment.environment as env
 from helix.database.database import *
+from helix.api.exceptions import *
 from helix.environment.permissions import PermissionHandler
-import helix.api.dcc.nuke as nuke
-import helix.api.dcc.maya as maya
-import helix.api.dcc.houdini as houdini
 
 dbLoc = env.getEnvironment('db')
 
@@ -18,7 +16,7 @@ perms = PermissionHandler()
 # User commands
 def mkshow(showName):
 	perms.check('helix.create.show')
-	
+
 	show = Show(name=showName)
 
 	show.set('dirName', show.getSafeName())
@@ -29,7 +27,7 @@ def mkshow(showName):
 
 def rmshow(showName, clean=False):
 	perms.check('helix.delete.show')
-	
+
 	show = db.removeShow(showName, clean)
 
 	if not show:
@@ -41,7 +39,7 @@ def rmshow(showName, clean=False):
 
 def mkseq(seqNum):
 	perms.check('helix.create.sequence')
-	
+
 	seq = Sequence(num=int(seqNum))
 
 	env.show.addSequence(seq)
@@ -127,6 +125,8 @@ def mke(elType, name, sequence=None, shot=None):
 	container.addElement(el)
 	db.save()
 
+	return el
+
 def get(elType, name, sequence=None, shot=None):
 	perms.check('helix.get')
 
@@ -145,14 +145,12 @@ def get(elType, name, sequence=None, shot=None):
 	print 'Working on {}'.format(element)
 
 # Element-context commands
-def pub():
+def pub(file, range=(), force=True):
 	perms.check('helix.publish')
-
-	element = env.element
-	newVersion = element.versionUp()
-
+	env.element.versionUp(file, range=range, ignoreMissing=not force)
 	db.save()
-	print 'Published new version: {}'.format(newVersion)
+
+	print 'Published version: {}'.format(env.element.get('pubVersion'))
 
 def roll(version=None):
 	perms.check('helix.rollback')
@@ -176,6 +174,63 @@ def mod(attribute, value=None):
 	else:
 		perms.check('helix.mod.get')
 		print element.get(attribute)
+
+def importEl(dir, workFilePath, elType, name=None, sequence=None, shot=None, importAll=False):
+	perms.check('helix.import.element')
+
+	if not os.path.exists(dir):
+		raise ImportError('Directory specified does not exist: {}'.format(dir))
+
+	if not os.path.isdir(dir):
+		raise ImportError('Not a directory: {}'.format(dir))
+
+	if not os.path.exists(workFilePath):
+		raise ImportError('Work file specified does not exist: {}'.format(workFilePath))
+
+	baseName, _, _ = fileutils.parseFilePath(workFilePath)
+	name = name if name else baseName
+	el = mke(elType, name, sequence, shot)
+
+	if fileutils.pathIsRelativeTo(workFilePath, dir):
+		relPath = os.path.relpath(workFilePath, dir)
+		dest = os.path.join(el.getDiskLocation(), relPath)
+
+		if not os.path.exists(os.path.dirname(dest)):
+			os.makedirs(os.path.dirname(dest))
+
+		shutil.copy(workFilePath, dest)
+		el.set('workFile', WorkFile(path=dest))
+	else:
+		shutil.copy(workFilePath, el.getDiskLocation())
+		el.set('workFile', WorkFile(path=os.path.join(el.getDiskLocation(), os.path.split(workFilePath)[1])))
+
+	if importAll:
+		fileutils.copytree(dir, el.getDiskLocation(), ignore=shutil.ignore_patterns(os.path.split(workFilePath)[1]))
+
+	db.save()
+
+def clone(show=None, sequence=None, shot=None):
+	# TODO: consider an option for also cloning the work and/or release dirs of the element
+	perms.check('helix.clone')
+	show = env.show if not show else db.getShow(show)
+	container = None
+
+	if not show:
+		raise DatabaseError('Invalid show specified: {}'.format(show))
+
+	if sequence and shot:
+		_, container = show.getShot(sequence, shot)
+	elif sequence:
+		container = show.getSequence(sequence)
+	elif not sequence and not shot:
+		container = show
+	else:
+		raise HelixException('If specifying a shot to clone into, the sequence number must also be provided.')
+
+	cloned = env.element.clone(container)
+
+	os.path.makedirs(cloned.getDiskLocation())
+	db.save()
 
 def override(sequence=None, shot=None):
 	perms.check('helix.override')
@@ -211,42 +266,19 @@ def override(sequence=None, shot=None):
 		else:
 			print 'None'
 
-def createFile(name=None):
-	wf = env.element.getWorkFile()
-
-	if wf.exists():
-		pass
+def createFile(path=None):
+	if not path:
+		perms.check('helix.workfile.get')
+		wf = env.element.getWorkFile('')
+		# User trying to retrieve the work file
 	else:
-		wf.createBlank()
+		perms.check('helix.workfile.create')
+		if not os.path.exists(path):
+			raise HelixException('Cannot create work file from path: {} (File does not exist)'.format(path))
 
-	if elType in ('nuke', 'camera'):
-		fileName, version = nuke.getFile(env.element, name=name)
+		wf = env.element.getWorkFile(path)
 
-		if not fileName:
-			print 'No existing file found, making a new one'
-			fileName = nuke.createBlank(env.element, name=name)
-
-		print 'Opening file: ' + str(fileName)
-		nuke.openFile(str(fileName))
-	elif elType in ('prop', 'set', 'character'):
-		# Maya
-		fileName, version = maya.getFile(env.element, name=name)
-
-		if not fileName:
-			print 'No existing file found, making a new one'
-			fileName = maya.createBlank(env.element, name=name)
-
-		print 'Opening file: ' + str(fileName)
-		maya.openFile(str(fileName))
-	elif elType in ('effect'):
-		fileName, version = houdini.getFile(env.element, name=name)
-
-		if not fileName:
-			print 'No existing file found, making a new one'
-			fileName = houdini.createBlank(env.element, name=name)
-
-		print 'Opening file: ' + str(fileName)
-		houdini.openFile(str(fileName))
+	db.save()
 
 def shows():
 	perms.check('helix.view.show')
@@ -421,6 +453,18 @@ def main(cmd, argv):
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
 		mke(**args)
+	elif cmd == 'clone':
+		if not env.getEnvironment('element'):
+			print 'Please get an element to work on first'
+			return
+
+		parser.add_argument('--show', default=None, help='The show to clone into. If not provided, clones into the current environment\'s show.')
+		parser.add_argument('--sequence', '-sq', default=None, help='The sequence number to clone into. If not provided, will clone into the current show or the show provided.')
+		parser.add_argument('--shot', '-s', default=None, help='The shot number to clone into. If not provided, will clone into the sequence (if provided), otherwise the show.')
+
+		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
+
+		clone(**args)
 	elif cmd == 'rme':
 		if not env.getEnvironment('show'):
 			print 'Please pop into a show first'
@@ -460,6 +504,11 @@ def main(cmd, argv):
 			return
 
 		parser = argparse.ArgumentParser(prog='pub', description='Publish a new version of the current working element')
+
+		parser.add_argument('file', help='The path to the file OR frame from a sequence OR directory to publish')
+		parser.add_argument('--range', '-r', default=None, help='The number range to publish a given frame sequence with. By default will attempt to publish the largest range found.')
+		parser.add_argument('--force', '-f', action='store_true', help='By default, frame sequences will not publish if any frames are missing within the range (specified or found). Use this flag to force the publish to occur anyway.')
+
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
 		pub(**args)
@@ -506,13 +555,31 @@ def main(cmd, argv):
 			print 'Please get an element to work on first'
 			return
 
-		parser = argparse.ArgumentParser(prog='file', description='Opens the work file (or creates a file if it doesn\'t exist) for the current element')
+		parser = argparse.ArgumentParser(prog='file', description='Assigns the given file path to be this element\'s work file.')
 
-		parser.add_argument('--name', '-n', default=None, help='A different name for the file other than the element\'s name')
+		parser.add_argument('path', nargs='?', default=None, help='The path to the file that should become the work file for this element')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
 		createFile(**args)
+	elif cmd == 'import':
+		if not env.getEnvironment('show'):
+			print 'Please pop into a show first'
+			return
+
+		parser = argparse.ArgumentParser(prog='import', description='Imports a directory and specific file to become a new element')
+
+		parser.add_argument('dir', help='The full path to the directory of files associated with the element about to be created. The work file should be somewhere within this directory.')
+		parser.add_argument('workFilePath', help='The full path to the element\'s associated work file. The work file is what users will edit to produce the element.')
+		parser.add_argument('elType', help='The element type the new element will be')
+		parser.add_argument('--name', '-n', help='The name of the element. By default will use the name of the specified "work file" as a guess.', default=None, nargs='?')
+		parser.add_argument('--sequence', '-sq', default=None, help='The sequence number to get elements from')
+		parser.add_argument('--shot', '-s', default=None, help='The shot number to get elements from')
+		parser.add_argument('--importAll', '-i', action='store_true', help='By default, all the files from "dir" will not be imported into the new element\'s directory. Include this flag to also have all of those files moved over.')
+
+		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
+
+		importEl(**args)
 	elif cmd == 'els' or cmd == 'elements':
 		if not env.getEnvironment('show'):
 			print 'Please pop into a show first'

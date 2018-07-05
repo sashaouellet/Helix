@@ -1,0 +1,326 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>Dialog</class>
+ <widget class="QDialog" name="Dialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>467</width>
+    <height>556</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Auto Slap Comper</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QTableWidget" name="TBL_layers">
+     <property name="toolTip">
+      <string>Elements to comp together. Elements are comped front to back according to standard layer ordering (top = frontmost, bottom = backmost). Version indicates which element version to use, defaulting to the most recent published version. Merge method correlates to the merge types inside Nuke, defaults to Over.</string>
+     </property>
+     <property name="dragEnabled">
+      <bool>true</bool>
+     </property>
+     <property name="dragDropOverwriteMode">
+      <bool>false</bool>
+     </property>
+     <property name="dragDropMode">
+      <enum>QAbstractItemView::InternalMove</enum>
+     </property>
+     <property name="alternatingRowColors">
+      <bool>true</bool>
+     </property>
+     <property name="selectionMode">
+      <enum>QAbstractItemView::SingleSelection</enum>
+     </property>
+     <property name="selectionBehavior">
+      <enum>QAbstractItemView::SelectRows</enum>
+     </property>
+     <attribute name="horizontalHeaderStretchLastSection">
+      <bool>true</bool>
+     </attribute>
+     <column>
+      <property name="text">
+       <string>Element</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>Version</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>Merge Method</string>
+      </property>
+     </column>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayout_3">
+     <item>
+      <widget class="QPushButton" name="BTN_add">
+       <property name="text">
+        <string>Add</string>
+       </property>
+       <property name="autoDefault">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="BTN_remove">
+       <property name="text">
+        <string>Remove</string>
+       </property>
+       <property name="autoDefault">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="BTN_up">
+       <property name="text">
+        <string>Move Up</string>
+       </property>
+       <property name="autoDefault">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="BTN_down">
+       <property name="text">
+        <string>Move Down</string>
+       </property>
+       <property name="autoDefault">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="horizontalSpacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupBox">
+     <property name="toolTip">
+      <string>Text that will be comped over top the final comp, according to the dailies slap comp template specified somehwere in the show folder structure.</string>
+     </property>
+     <property name="title">
+      <string>Screen Text Options</string>
+     </property>
+     <layout class="QFormLayout" name="formLayout">
+      <property name="fieldGrowthPolicy">
+       <enum>QFormLayout::ExpandingFieldsGrow</enum>
+      </property>
+      <property name="labelAlignment">
+       <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+      </property>
+      <item row="1" column="0">
+       <widget class="QCheckBox" name="CHK_author">
+        <property name="toolTip">
+         <string>Your username will be included</string>
+        </property>
+        <property name="text">
+         <string>Author</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QCheckBox" name="CHK_elementVer">
+        <property name="toolTip">
+         <string>The chosen element names will be shown, along with which version was used for the slap comp</string>
+        </property>
+        <property name="text">
+         <string>Element versions</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <widget class="QLineEdit" name="LNE_global">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
+        <property name="placeholderText">
+         <string>&quot;Light fix&quot;, &quot;Animation lock&quot;, etc...</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0">
+       <widget class="QCheckBox" name="CHK_global">
+        <property name="toolTip">
+         <string>Useful for providing information about what this comp is supposed to show</string>
+        </property>
+        <property name="text">
+         <string>Comments:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QCheckBox" name="CHK_shotNum">
+        <property name="toolTip">
+         <string>The shot number string</string>
+        </property>
+        <property name="text">
+         <string>Shot number</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="0">
+       <widget class="QCheckBox" name="CHK_verInfo">
+        <property name="toolTip">
+         <string>Versioning info regarding this particular comp. Something to help distinguish between comps.</string>
+        </property>
+        <property name="text">
+         <string>Version info</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QLineEdit" name="LNE_verInfo">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
+        <property name="placeholderText">
+         <string>&quot;v0002&quot;, &quot;0002&quot;, &quot;dailies&quot;, &quot;final&quot;, etc...</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupBox_2">
+     <property name="title">
+      <string>Output</string>
+     </property>
+     <layout class="QFormLayout" name="formLayout_3">
+      <property name="fieldGrowthPolicy">
+       <enum>QFormLayout::ExpandingFieldsGrow</enum>
+      </property>
+      <property name="labelAlignment">
+       <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+      </property>
+      <item row="0" column="0">
+       <widget class="QLabel" name="LBL_output">
+        <property name="toolTip">
+         <string>What folder to output the movie to</string>
+        </property>
+        <property name="text">
+         <string>Folder:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout">
+        <item>
+         <widget class="QLineEdit" name="LNE_output"/>
+        </item>
+        <item>
+         <widget class="QPushButton" name="BTN_output">
+          <property name="text">
+           <string>...</string>
+          </property>
+          <property name="autoDefault">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="LBL_file">
+        <property name="toolTip">
+         <string>File name for the movie</string>
+        </property>
+        <property name="text">
+         <string>File name:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_7">
+        <item>
+         <widget class="QLineEdit" name="LNE_file"/>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayout_4">
+     <item>
+      <spacer name="horizontalSpacer_2">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="BTN_cancel">
+       <property name="text">
+        <string>Cancel</string>
+       </property>
+       <property name="autoDefault">
+        <bool>false</bool>
+       </property>
+       <property name="default">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="BTN_comp">
+       <property name="text">
+        <string>Comp</string>
+       </property>
+       <property name="autoDefault">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <tabstops>
+  <tabstop>TBL_layers</tabstop>
+  <tabstop>BTN_add</tabstop>
+  <tabstop>BTN_remove</tabstop>
+  <tabstop>BTN_up</tabstop>
+  <tabstop>BTN_down</tabstop>
+  <tabstop>LNE_output</tabstop>
+  <tabstop>BTN_output</tabstop>
+  <tabstop>LNE_file</tabstop>
+  <tabstop>BTN_cancel</tabstop>
+  <tabstop>BTN_comp</tabstop>
+ </tabstops>
+ <resources/>
+ <connections/>
+</ui>

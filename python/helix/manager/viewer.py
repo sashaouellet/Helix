@@ -3,6 +3,10 @@ from helix.database.database import *
 import helix.api.commands as cmds
 import helix.environment.environment as env
 import helix.utils.fileutils as fileutils
+from helix.manager.dailies import SlapCompDialog
+from helix.manager.config import ConfigEditorDialog
+
+import qdarkstyle
 
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
@@ -55,8 +59,6 @@ class Node(object):
 		return child
 
 class ShowModel(QAbstractItemModel):
-	HEADERS = ['Sequence', 'Shot']
-
 	def __init__(self, shows, parent=None):
 		super(ShowModel, self).__init__(parent)
 
@@ -116,7 +118,7 @@ class ShowModel(QAbstractItemModel):
 			parent = parent.internalPointer()
 		parent.addChild(node)
 
-	def index(self, row, col, parent=None):
+	def index(self, row, col, parent=QModelIndex()):
 		if not self.hasIndex(row, col, parent):
 			return QModelIndex()
 
@@ -143,13 +145,6 @@ class ShowModel(QAbstractItemModel):
 					return QAbstractItemModel.createIndex(self, p.row(), 0, p)
 
 		return QModelIndex()
-
-	def headerData(self, section, orientation, role=Qt.DisplayRole):
-		if role == Qt.DisplayRole and orientation == Qt.Horizontal:
-			if section > 0 and section < len(HEADERS):
-				return HEADERS[section]
-
-		return QVariant()
 
 class ElementTableItem(QLabel):
 	DATA_MAPPING = ['type', 'name']
@@ -423,7 +418,7 @@ class RollbackDialog(QDialog):
 
 		verInfo = element.getPublishedVersions()
 
-		self.CMB_rollback.addItems([str(ver[0]) for ver in verInfo])
+		self.CMB_rollback.addItems([str(ver.get('version')) for ver in verInfo])
 
 		super(RollbackDialog, self).show()
 
@@ -560,25 +555,141 @@ class ImportElementDialog(QDialog):
 		self.BTN_cancel.clicked.connect(self.reject)
 		self.BTN_import.clicked.connect(self.accept)
 		self.BTN_file.clicked.connect(self.handleFileImport)
+		self.BTN_folder.clicked.connect(self.handleFolderImport)
+		self.LNE_folder.textChanged.connect(self.handleFolderChange)
+		self.LNE_file.textChanged.connect(self.handleFileChange)
+		self.CHK_nameless.clicked.connect(self.handleNamelessToggle)
+		self.CMB_show.currentIndexChanged.connect(self.populateSeqAndShot)
+		self.CMB_seq.currentIndexChanged.connect(self.populateShots)
+
+	def handleNamelessToggle(self):
+		self.LBL_name.setEnabled(not self.CHK_nameless.isChecked())
+		self.LNE_name.setEnabled(not self.CHK_nameless.isChecked())
+
+	def populateShots(self):
+		self.CMB_shot.clear()
+
+		seq = str(self.CMB_seq.currentText())
+
+		if not seq:
+			self.CMB_shot.addItems([])
+			return
+
+		seq = env.show.getSequence(seq)
+		shots = [str(s.get('num')) for s in seq.getShots()]
+
+		self.CMB_shot.addItems(sorted(shots, key=lambda s: int(s)))
+		self.CMB_shot.setCurrentIndex(0)
+
+	def populateSeqAndShot(self):
+		self.CMB_seq.clear()
+		cmds.pop(str(self.CMB_show.currentText()))
+
+		seqs = [str(s.get('num')) for s in env.show.getSequences()]
+
+		self.CMB_seq.addItems(sorted(seqs))
+		self.CMB_seq.setCurrentIndex(0)
+		self.populateShots()
 
 	def handleFileImport(self):
-		self.LNE_file.setText(QFileDialog.getOpenFileName(self, caption='Element file or directory',))
+		self.LNE_file.setText(QFileDialog.getOpenFileName(self, 'Work File', str(self.LNE_folder.text()).strip()))
+
+		self.handleFileChange()
+
+	def handleFolderChange(self):
+		text = str(self.LNE_folder.text()).strip()
+		cond = os.path.exists(text) and os.path.isdir(text)
+
+		self.LBL_file.setEnabled(cond)
+		self.LNE_file.setEnabled(cond)
+		self.BTN_file.setEnabled(cond)
+		self.CHK_importAll.setEnabled(cond)
+
+	def handleFileChange(self):
+		text = str(self.LNE_file.text()).strip()
+		cond = os.path.exists(text)
+
+		self.LBL_name.setEnabled(cond)
+		self.LNE_name.setEnabled(cond)
+		self.CHK_nameless.setEnabled(cond)
+
+		self.LBL_type.setEnabled(cond)
+		self.CMB_type.setEnabled(cond)
+
+		self.LBL_container.setEnabled(cond)
+		self.LBL_show.setEnabled(cond)
+		self.CMB_show.setEnabled(cond)
+		self.LBL_seq.setEnabled(cond)
+		self.CMB_seq.setEnabled(cond)
+		self.LBL_shot.setEnabled(cond)
+		self.CMB_shot.setEnabled(cond)
+
+	def handleFolderImport(self):
+		self.LNE_folder.setText(QFileDialog.getExistingDirectory(self, caption='Element Folder'))
+
+		self.handleFolderChange()
 
 	def accept(self):
 		super(ImportElementDialog, self).accept()
 
 	def show(self):
-		self.LBL_name.setVisible(False)
-		self.LNE_name.setVisible(False)
-		self.LBL_type.setVisible(False)
-		self.CMB_type.setVisible(False)
-		self.RDO_publish.setVisible(False)
-		self.RDO_overwrite.setVisible(False)
-		self.CMB_overwriteVersion.setVisible(False)
+		self.LNE_folder.setText('')
+		self.CHK_importAll.setEnabled(False)
+
+		self.LBL_file.setEnabled(False)
+		self.LNE_file.setEnabled(False)
+
+		self.LBL_name.setEnabled(False)
+		self.LNE_name.setEnabled(False)
+		self.LNE_name.setText('')
+		self.CHK_nameless.setEnabled(False)
+
+		self.LBL_type.setEnabled(False)
+		self.CMB_type.setEnabled(False)
+		self.CMB_type.clear()
+		self.CMB_type.addItems(Element.ELEMENT_TYPES)
+		self.CMB_type.setCurrentIndex(0)
+
+		self.LBL_container.setEnabled(False)
+		self.LBL_show.setEnabled(False)
+		self.CMB_show.setEnabled(False)
+		self.CMB_show.addItems([s.get('name') for s in self.parent().db.getShows()])
+		self.CMB_show.setCurrentIndex(0)
+		self.LBL_seq.setEnabled(False)
+		self.CMB_seq.setEnabled(False)
+		self.CMB_seq.clear()
+		self.LBL_shot.setEnabled(False)
+		self.CMB_shot.setEnabled(False)
+		self.CMB_shot.clear()
+
+		self.populateSeqAndShot()
+
 		self.LNE_file.setText('')
 		self.BTN_import.setEnabled(False)
 
 		super(ImportElementDialog, self).show()
+
+class FindElementItem(QLabel):
+	def __init__(self, el, col, parent):
+		super(FindElementItem, self).__init__(parent)
+
+		self.element = el
+		self.col = col
+
+		self.setText(str(self.data()))
+
+	def data(self):
+		if self.col == 0:
+			return self.element.get('name')
+		elif self.col == 1:
+			return self.element.get('type')
+		elif self.col == 2:
+			container = self.element.getContainer()
+
+			if isinstance(container, tuple):
+				return '{} ({})'.format(str(container[1]), str(container[0]))
+			else:
+				return container
 
 class FindDialog(QDialog):
 	def __init__(self, parent):
@@ -603,6 +714,8 @@ class FindDialog(QDialog):
 		self.show = str(self.CMB_show.currentText())
 		self.seq = None if self.CMB_seq.currentText() == 'any' else str(self.CMB_seq.currentText())
 		self.shot = None if self.CMB_shot.currentText() == 'any' else str(self.CMB_shot.currentText())
+
+		cmds.pop(self.show)
 
 	def filterElements(self, element):
 		if self.string:
@@ -638,8 +751,6 @@ class FindDialog(QDialog):
 		return True
 
 	def populateShots(self):
-		show = self.parent().db.getShow(str(self.CMB_show.currentText()))
-
 		self.CMB_shot.clear()
 
 		seq = str(self.CMB_seq.currentText())
@@ -648,16 +759,16 @@ class FindDialog(QDialog):
 			self.CMB_shot.addItems([])
 			return
 
-		seq = show.getSequence(seq)
+		seq = env.show.getSequence(seq)
 		shots = [str(s.get('num')) for s in seq.getShots()]
 
 		self.CMB_shot.addItems(['any'] + sorted(shots, key=lambda s: int(s)))
 
 	def populateSeqAndShot(self):
 		self.CMB_seq.clear()
+		cmds.pop(str(self.CMB_show.currentText()))
 
-		show = self.parent().db.getShow(str(self.CMB_show.currentText()))
-		seqs = [str(s.get('num')) for s in show.getSequences()]
+		seqs = [str(s.get('num')) for s in env.show.getSequences()]
 
 		self.CMB_seq.addItems(['any'] + sorted(seqs))
 		self.populateShots()
@@ -667,7 +778,9 @@ class FindDialog(QDialog):
 
 		elTypeItems.extend(Element.ELEMENT_TYPES)
 
+		self.CMB_type.clear()
 		self.CMB_type.addItems(elTypeItems)
+		self.CMB_type.setCurrentIndex(0)
 		self.CMB_show.addItems([s.get('name') for s in self.parent().db.getShows()])
 
 		self.populateSeqAndShot()
@@ -680,7 +793,18 @@ class FindDialog(QDialog):
 		show = self.parent().db.getShow(self.show)
 		elements = show.getAllElements(self.filterElements)
 
-		print elements
+		self.TBL_found.clearContents()
+		self.TBL_found.setRowCount(0)
+
+		row = 0
+
+		for el in elements:
+			self.TBL_found.insertRow(row)
+			self.TBL_found.setCellWidget(row, 0, FindElementItem(el, 0, self.TBL_found))
+			self.TBL_found.setCellWidget(row, 1, FindElementItem(el, 1, self.TBL_found))
+			self.TBL_found.setCellWidget(row, 2, FindElementItem(el, 2, self.TBL_found))
+
+			row += 1
 
 class ManagerWindow(QMainWindow):
 	def __init__(self, dbPath=None):
@@ -724,11 +848,40 @@ class ManagerWindow(QMainWindow):
 
 		self.checkSelection()
 		self.makeConnections()
+		self.setAcceptDrops(True)
 
 		self.show()
 
 		if dbPath:
 			self.handleOpenDB(dbLoc=dbPath)
+
+	def dragEnterEvent(self, event):
+		if event.mimeData().hasUrls():
+			urls = event.mimeData().urls()
+
+			if urls and len(urls) == 1:
+				event.acceptProposedAction()
+
+		super(ManagerWindow, self).dragEnterEvent(event)
+
+	def dropEvent(self, event):
+		url = event.mimeData().urls()[0]
+
+		if url.isLocalFile():
+			path = str(url.toLocalFile())
+
+			if not os.path.isdir(path):
+				_, ext = os.path.splitext(path)
+
+				if ext == '.json':
+					self.handleOpenDB(dbLoc=path)
+					event.acceptProposedAction()
+				else: # Try import element (from single file)
+					pass
+			else: # Try import element (as directory)
+				pass
+
+		super(ManagerWindow, self).dropEvent(event)
 
 	def makeConnections(self):
 		self.ACT_openDB.triggered.connect(self.handleOpenDB)
@@ -743,6 +896,12 @@ class ManagerWindow(QMainWindow):
 		self.TBL_elements.itemDoubleClicked.connect(self.handleElementEdit)
 		self.VIEW_cols.doubleClicked.connect(self.handleDataEdit)
 		self.ACT_find.triggered.connect(self.findDialog.show)
+		self.ACT_prefGeneral.triggered.connect(lambda: self.handleConfigEditor(0))
+		self.ACT_prefPerms.triggered.connect(lambda: self.handleConfigEditor(1))
+		self.ACT_prefExe.triggered.connect(lambda: self.handleConfigEditor(2))
+
+		self.ACT_slapComp.triggered.connect(self.handleSlapComp)
+		self.ACT_slapComp.setEnabled(False)
 
 		self.MENU_elementTypes.clear()
 		self.MENU_elementTypes.setWindowTitle('Element Type Filter')
@@ -758,6 +917,23 @@ class ManagerWindow(QMainWindow):
 		self.MENU_elementTypes.addSeparator()
 		self.MENU_elementTypes.addAction('View All').triggered.connect(lambda: self.handleElementTypeFilter(True))
 		self.MENU_elementTypes.addAction('Hide All').triggered.connect(lambda: self.handleElementTypeFilter(False))
+
+	def handleConfigEditor(self, tabIndex):
+		dialog = ConfigEditorDialog(self)
+
+		dialog.tabs.setCurrentIndex(tabIndex)
+		dialog.show()
+
+	def handleSlapComp(self):
+		if not self.currentSelectionIndex:
+			return
+
+		item = self.currentSelectionIndex.internalPointer().data(0)
+
+		if not isinstance(item, Shot):
+			return
+
+		SlapCompDialog(item, self).show()
 
 	def handleImportElement(self):
 		self.importElementDialog.show()
@@ -907,14 +1083,17 @@ class ManagerWindow(QMainWindow):
 			self.ACT_newSeq.setEnabled(True)
 			self.ACT_newShot.setEnabled(False)
 			self.ACT_newElement.setEnabled(True)
+			self.ACT_slapComp.setEnabled(False)
 		elif isinstance(item, Sequence):
 			self.ACT_newSeq.setEnabled(True)
 			self.ACT_newShot.setEnabled(True)
 			self.ACT_newElement.setEnabled(True)
+			self.ACT_slapComp.setEnabled(False)
 		elif isinstance(item, Shot):
 			self.ACT_newSeq.setEnabled(False)
 			self.ACT_newShot.setEnabled(True)
 			self.ACT_newElement.setEnabled(True)
+			self.ACT_slapComp.setEnabled(True)
 
 	def handleDataSelection(self, currentIndex, oldIndex):
 		if not currentIndex or not currentIndex.isValid():
@@ -981,10 +1160,11 @@ if __name__ == '__main__':
 	app = QApplication(sys.argv)
 	dbPath = None
 
+	app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt())
+
 	if len(sys.argv) >= 2:
 		dbPath = sys.argv[1]
 
 	window = ManagerWindow(dbPath=dbPath)
-	cmds.ERROR_BUBBLING = True
 
 	sys.exit(app.exec_())

@@ -9,12 +9,18 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1016</width>
+    <width>1001</width>
     <height>723</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>Helix Show Management</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true"/>
+  </property>
+  <property name="unifiedTitleAndToolBarOnMac">
+   <bool>true</bool>
   </property>
   <widget class="QWidget" name="WIDG_main">
    <layout class="QVBoxLayout" name="verticalLayout">
@@ -22,6 +28,9 @@
      <widget class="QColumnView" name="VIEW_cols">
       <property name="tabKeyNavigation">
        <bool>true</bool>
+      </property>
+      <property name="dragDropMode">
+       <enum>QAbstractItemView::NoDragDrop</enum>
       </property>
       <property name="alternatingRowColors">
        <bool>true</bool>
@@ -90,8 +99,8 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1016</width>
-     <height>28</height>
+     <width>1001</width>
+     <height>22</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
@@ -136,13 +145,41 @@
     <property name="title">
      <string>Edit</string>
     </property>
+    <widget class="QMenu" name="menuPreferences">
+     <property name="title">
+      <string>Preferences</string>
+     </property>
+     <addaction name="ACT_prefGeneral"/>
+     <addaction name="ACT_prefPerms"/>
+     <addaction name="ACT_prefExe"/>
+    </widget>
     <addaction name="ACT_editProperties"/>
+    <addaction name="separator"/>
+    <addaction name="menuPreferences"/>
+   </widget>
+   <widget class="QMenu" name="menuDailies">
+    <property name="title">
+     <string>Shot</string>
+    </property>
+    <addaction name="ACT_slapComp"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuEdit"/>
+   <addaction name="menuDailies"/>
    <addaction name="menuView"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
+  <widget class="QToolBar" name="toolBar">
+   <property name="windowTitle">
+    <string>toolBar</string>
+   </property>
+   <attribute name="toolBarArea">
+    <enum>TopToolBarArea</enum>
+   </attribute>
+   <attribute name="toolBarBreak">
+    <bool>false</bool>
+   </attribute>
+  </widget>
   <action name="ACT_openDB">
    <property name="text">
     <string>Connect to database...</string>
@@ -247,6 +284,29 @@
   <action name="ACT_find">
    <property name="text">
     <string>Find</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+F</string>
+   </property>
+  </action>
+  <action name="ACT_slapComp">
+   <property name="text">
+    <string>Auto Slap Comp...</string>
+   </property>
+  </action>
+  <action name="ACT_prefGeneral">
+   <property name="text">
+    <string>General...</string>
+   </property>
+  </action>
+  <action name="ACT_prefPerms">
+   <property name="text">
+    <string>Users / Permissions...</string>
+   </property>
+  </action>
+  <action name="ACT_prefExe">
+   <property name="text">
+    <string>Executables...</string>
    </property>
   </action>
  </widget>

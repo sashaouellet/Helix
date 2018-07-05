@@ -3,7 +3,7 @@ this is only implemented for a JSON implementation but should be easy to extend 
 parent of all other items and stores sequences. Sequences house shots which hold the individual elements that make up
 that particular shot, i.e. Camera, FX, props, etc.
 
-__author__  = Sasha Ouellet (sashaouellet@gmail.com)
+__author__  = Sasha Ouellet (sashaouellet@gmail.com / www.sashaouellet.com)
 __version__ = 1.0.0
 __date__    = 02/18/18
 """
@@ -12,6 +12,8 @@ import os, sys, shutil, glob, datetime, copy, re, itertools
 import helix.environment.environment as env
 import helix.utils.fileutils as fileutils
 from helix.utils.diff import DiffSet, STATE_ADD
+from helix.api.exceptions import *
+from helix.utils.fileclassification import FrameSequence, Frame
 
 class Database(object):
 	"""Represents a collection of shows on disk
@@ -291,27 +293,6 @@ class Database(object):
 			# Can go through with our local changes since nothing was changed on disk
 			return (False, ondiskDiffs, localDiffs, latestDiffs)
 
-class HelixException(BaseException):
-	pass
-
-class DatabaseError(HelixException):
-	"""Defines an error that took place with certain database operations. This custom error
-	is necessary for certain try statements so that we do not preemptively quit while the user
-	is operating on elements, shots, etc.
-	"""
-	pass
-
-class MergeConflictError(HelixException):
-	"""Represents an error that occurs during attempting the save the Database object. Any conflicting changes
-	with what is on disk vs. in memory will raise this error.
-	"""
-	pass
-
-class PublishError(HelixException):
-	"""Represents an error that occurs during publishing, i.e. the publish file not being found
-	"""
-	pass
-
 class DatabaseObject(object):
 
 	"""The DatabaseObject represents any individual piece of the database that will be saved to disk.
@@ -377,6 +358,43 @@ class DatabaseObject(object):
 			return self.__dict__ != other.__dict__
 		else:
 			return True
+
+	def diff(self, other, path=[]):
+		diffs = DiffSet()
+
+		if type(self) != type(other):
+			raise ValueError('Can only perform diff between objects of the same type')
+
+		path.append(self.get('name', self.__class__.__name__))
+
+		for key, val in self._data.iteritems():
+			otherVal = other._data.get(key)
+
+			if isinstance(val, list) and isinstance(otherVal, list):
+				path.append(key)
+
+				valTuple, otherValTuple = zip(*list(itertools.izip_longest(val, otherVal, fillvalue=None)))
+
+				for v, ov in zip(valTuple, otherValTuple):
+					if v != ov:
+						diffs.add(path, valTuple.index(v), val, otherVal, v, ov)
+
+				path.pop()
+			else:
+				if isinstance(otherVal, unicode):
+					otherVal = str(otherVal)
+				if isinstance(val, unicode):
+					val = str(val)
+				if otherVal != val:
+					diffs.add(path, key, self._data, other._data, val, otherVal)
+
+		for key, val in other._data.iteritems():
+			if key not in self._data:
+				diffs.add(path, key, self._data, other._data, None, val)
+
+		path.pop()
+
+		return diffs
 
 	@staticmethod
 	def encode(data):
@@ -451,7 +469,7 @@ class DatabaseObject(object):
 
 				return ret
 
-			classLookup = {'Show':Show, 'Sequence':Sequence, 'Shot':Shot, 'Set':Set, 'Character':Character, 'Prop':Prop, 'Effect':Effect, 'Comp':Comp, 'Camera':Camera, 'Plate':Plate, 'WorkFile':WorkFile}
+			classLookup = {'Show':Show, 'Sequence':Sequence, 'Shot':Shot, 'Set':Set, 'Character':Character, 'Prop':Prop, 'Effect':Effect, 'Comp':Comp, 'Camera':Camera, 'Plate':Plate, 'WorkFile':WorkFile, 'PublishedFile':PublishedFile}
 			obj = classLookup.get(clazz)
 
 			if obj:
@@ -1174,39 +1192,72 @@ class Shot(ElementContainer):
 	def __repr__(self):
 		return 'Shot {} ({})'.format(self.get('num', -1), self.get('clipName'))
 
-class WorkFile(DatabaseObject):
-	FILE_TYPES = {'nuke': 'nk', 'maya': 'ma', 'houdini': 'hipnc'}
-
+class PublishedFile(DatabaseObject):
 	def __init__(self, *args, **kwargs):
+		super(PublishedFile, self).__init__(*args, **kwargs)
+
+		# Setting defaults if we didn't construct with them
+		user, timestamp = env.getCreationInfo()
+
+		if not self.get('filePath'):
+			raise ValueError('PublishedFile must be created with a file path')
+
+		if not self.get('user'):
+			self.set('user', user)
+
+		if not self.get('timestamp'):
+			self.set('timestamp', timestamp)
+
+	def version(self):
+		return int(self.get('version', 1))
+
+class WorkFile(DatabaseObject):
+	def __init__(self, *args, **kwargs):
+		el = kwargs.pop('element', None)
+
 		super(WorkFile, self).__init__(*args, **kwargs)
 
-		elType = kwargs.get('elType')
+		if self.get('path') is None:
+			raise ValueError('WorkFile must be created with a file path')
 
-		self.set('version', self.getVersionNumberFromName())
-
-		if not self.get('type') and elType:
-			self.set('type', self.getFileTypeForType(elType))
-
-		if not self.get('path'):
-			self.set('path', os.path.join(self.get('root'), self.get('name')))
-
-	def getVersionNumberFromName(self):
-		match = re.match(r'[\._]v*(\d+)\..+$', self.get('name'))
+		fileName = os.path.split(self.get('path'))[-1]
+		match = re.match(r'^([\w\-_]+)([\._]v*(\d+))?\..+$', fileName)
 
 		if match:
-			return int(match.group(1))
+			if not match.group(3):
+				# No version, so inject version number into name
+				_, ext = os.path.splitext(fileName)
+
+				self.set('baseName', match.group(1))
+				self.set('name', match.group(1) + '.v' + str(1).zfill(env.VERSION_PADDING) + ext)
+				self.set('version', 1)
+			else:
+				self.set('baseName', match.group(1))
+				self.set('name', fileName)
+				self.set('version', int(match.group(3)))
+
+		if el and not fileutils.pathIsRelativeTo(self.get('path'), el.getDiskLocation()):
+			dest = os.path.join(el.getDiskLocation(), self.get('name'))
+
+			shutil.copy(self.get('path'), dest)
+			self.set('path', dest)
+
+		# Rename at the end to ensure the file that currently exists on disk has the proper version info if it was attached later
+		if os.path.exists(self.get('path')):
+			os.rename(self.get('path'), os.path.join(os.path.dirname(self.get('path')), self.get('name')))
+			self.set('path', os.path.join(os.path.dirname(self.get('path')), self.get('name')))
+
+	def isValid(self):
+		return self.get('path') is not None and self.get('name') is not None and self.get('version') is not None
+
+	@staticmethod
+	def getVersionNumberFromName(name):
+		match = re.match(r'^([\w\-_]+)([\._]v*(\d+))?\..+$', name)
+
+		if match and match.group(3):
+			return int(match.group(3))
 
 		return 1
-
-	def getFileTypeForType(self, elType):
-		if elType in ('nuke', 'camera'):
-			return WorkFile.FILE_TYPES['nuke']
-		elif elType in ('prop', 'set', 'character'):
-			return WorkFile.FILE_TYPES['maya']
-		elif elType in ('effect'):
-			return WorkFile.FILE_TYPES['houdini']
-
-		return ''
 
 	def exists(self):
 		return os.path.exists(fileutils.expand(self.get('path')))
@@ -1214,7 +1265,7 @@ class WorkFile(DatabaseObject):
 	def getVersions(self):
 		import OrderedDict
 
-		baseDir = os.path.join(fileutils.expand(self.get('root')))
+		baseDir = os.path.dirname(fileutils.expand(self.get('path')))
 
 		if not os.path.exists(baseDir):
 			os.makedirs(baseDir)
@@ -1223,6 +1274,7 @@ class WorkFile(DatabaseObject):
 		versions = {}
 
 		for f in files:
+			# TODO this will have to be updated since 'name' is now the whole file name
 			match = re.match(r'^({})[\._]v*(\d+)\..+$'.format(self.get('name')), f)
 
 			if match:
@@ -1234,43 +1286,6 @@ class WorkFile(DatabaseObject):
 				versions[ver] = filesForVer
 
 		return OrderedDict(sorted(versions.items(), key=lambda t: t[0]))
-
-	def diff(self, other, path=[]):
-		diffs = DiffSet()
-
-		if type(self) != type(other):
-			raise ValueError('Can only perform diff between objects of the same type')
-
-		path.append(self.get('name'))
-
-		for key, val in self._data.iteritems():
-			otherVal = other._data.get(key)
-
-			if isinstance(val, list) and isinstance(otherVal, list):
-				path.append(key)
-
-				valTuple, otherValTuple = zip(*list(itertools.izip_longest(val, otherVal, fillvalue=None)))
-
-				for v, ov in zip(valTuple, otherValTuple):
-					if v != ov:
-						diffs.add(path, valTuple.index(v), val, otherVal, v, ov)
-
-				path.pop()
-			else:
-				if isinstance(otherVal, unicode):
-					otherVal = str(otherVal)
-				if isinstance(val, unicode):
-					val = str(val)
-				if otherVal != val:
-					diffs.add(path, key, self._data, other._data, val, otherVal)
-
-		for key, val in other._data.iteritems():
-			if key not in self._data:
-				diffs.add(path, key, self._data, other._data, None, val)
-
-		path.pop()
-
-		return diffs
 
 class Element(DatabaseObject):
 
@@ -1300,9 +1315,21 @@ class Element(DatabaseObject):
 	PLATE = 'plate'
 	ELEMENT_TYPES = [SET, CHARACTER, PROP, TEXTURE, EFFECT, COMP, CAMERA, PLATE]
 
-	def getWorkFile(self):
-		elType = self.get('type')
-		wf = WorkFile(name=self.get('name'), elType=self.get('type'), root=fileutils.makeRelative(self.getDiskLocation(), 'work'))
+	def getPublishedFile(self, version):
+		"""Given a version (either number or PublishedFile object), returns the
+		file(s) that were previously published by the user as a list of file path(s)
+
+		Args:
+		    version (int / PublishedFile): The publish version to get the files from
+		"""
+		if isinstance(version, PublishedFile):
+			version = version.version()
+
+		if not isinstance(version, int):
+			raise ValueError('Version provided must be an integer')
+
+	def getWorkFile(self, path=None):
+		wf = WorkFile(path=path, element=self)
 		workFile = self.get('workFile', wf)
 
 		self.set('workFile', workFile)
@@ -1311,9 +1338,8 @@ class Element(DatabaseObject):
 
 	def getPublishedVersions(self):
 		versionInfo = self.get('versionInfo', {})
-		versionSplit = [[version] + info.split('/') for version, info in versionInfo.iteritems()] # Gives us [[verNum1, user1, timestamp1], ...]
 
-		return versionSplit
+		return versionInfo.values()
 
 	def getFileName(self, sequence=False): # TODO: determine format for publish file name
 		"""Gets the file name of the element - that is the filename that the system will look for
@@ -1379,7 +1405,7 @@ class Element(DatabaseObject):
 		baseName, ext = os.path.splitext(self.getFileName(sequence=sequence))
 		currVersion = self.get('pubVersion', -1)
 		currVersionFile = os.path.join(versionsDir, self.getVersionedFileName(versionNum=currVersion))
-		prevVersion = int(currVersion) - 1 if not version else version
+		prevVersion = int(currVersion) - 1 if not version else int(version)
 
 		if prevVersion < 1:
 			raise PublishError('Cannot rollback prior to version 1. Current version found: {}'.format(currVersion))
@@ -1424,7 +1450,7 @@ class Element(DatabaseObject):
 
 		return prevVersion
 
-	def versionUp(self):
+	def versionUp(self, sourceFile, range=(), ignoreMissing=False):
 		"""Publishes the current element to the next version, copying the proper file(s) to the
 		release directory and updating the versionless file to link to this new version.
 
@@ -1437,93 +1463,122 @@ class Element(DatabaseObject):
 		Returns:
 		    bool: Whether the publish action succeeded or not.
 		"""
+		if not os.path.exists(sourceFile):
+			raise PublishError('The given file doesn\'t exist: {}'.format(sourceFile))
+
 		workDir = self.getDiskLocation()
 		relDir = self.getDiskLocation(workDir=False)
 		versionsDir = os.path.join(relDir, '.versions')
-
-		if not self.get('ext'):
-			raise PublishError('Please set the expected extension first using "mod ext VALUE"')
 
 		if not os.path.exists(versionsDir):
 			os.makedirs(versionsDir)
 
-		fileName = self.getFileName()
-		workDirCopy = os.path.join(workDir, fileName)
-		version = self.get('version')
-		sequence = self.get('seq', False) == True
+		sequence = FrameSequence(sourceFile, range=range)
+		version = self.get('version', 1)
+		isSeq = sequence.getRange() != ()
+		versionInfo = self.get('versionInfo', {})
 
-		print 'Publishing: {} (Sequence={})'.format(workDirCopy, sequence)
+		if isSeq:
+			print 'Publishing sequence...'
 
-		if sequence:
-			workDirCopy = os.path.join(workDir, self.getFileName(sequence=True))
-			seq = glob.glob(workDirCopy)
+			if not sequence.isValid():
+				raise PublishError('No associated sequence found for the file given: {}'.format(sourceFile))
 
-			if not seq:
-				raise PublishError('Could not find the expected sequence: {}'.format(os.path.join(workDir, '{}.{}.{}'.format(self.get('name'), '#' * env.FRAME_PADDING, self.get('ext')))))
+			missing = sequence.getMissingFrames()
 
-			pubVersion = -1
+			if missing and not ignoreMissing:
+				raise PublishError('Missing frames from sequence: {}'.format(FrameSequence.prettyPrintFrameList(missing)))
 
-			for file in seq:
-				fileName = os.path.split(file)[1]
-				match = re.match(r'^.+\.(\d+)\..+$', fileName)
-
-				if match:
-					pubVersion = self.publishFile(fileName, version=version, frameNum=int(match.group(1)))
-
-			return pubVersion
-
+			versionedSeq = self.publishFile(sequence)
+			versionInfo[int(version)] = PublishedFile(version=int(version), filePath=versionedSeq)
 		else:
-			return self.publishFile(fileName)
+			print 'Publishing single file/folder...'
 
-	def publishFile(self, fileName, version=None, frameNum=None):
-		"""Given a file name of the work directory file to publish to "release", copies
-		the file to the release directory's versions folder and sets up the proper hard link.
+			versioned = self.publishFile(sourceFile)
+			versionInfo[int(version)] = PublishedFile(version=int(version), filePath=versioned)
+
+		self.set('versionInfo', versionInfo)
+		self.set('version', version + 1)
+		self.set('pubVersion', version)
+
+	def publishFile(self, fileName):
+		"""Given any arbitrary file name, determines if the file is a single file, part of a sequence, or
+		a directory and copies it accordingly to the release versions directory of the element. This also
+		sets up the hardlink(s) to the new versioned file(s).
+
+		If the incoming file name has a prefix that doesn't match the element's name, it will be
+		renamed accordingly.
 
 		Args:
-		    fileName (str): The current existing file to publish to the release directory
-		    version (int, optional): The explicit version number to publish to
-		    frameNum (int, optional): The frame number of the file to publish
+		    fileName (str): The current existing file/file from a sequence/directory to publish to the
+		    	release directory
 
 		Returns:
-		    int: The new version number that was just published
+		    str: The complete file path to the versioned file/file sequence/directory that was created as a result of the copy process
 		"""
-		workDir = self.getDiskLocation()
 		relDir = self.getDiskLocation(workDir=False)
 		versionsDir = os.path.join(relDir, '.versions')
-		workDirCopy = os.path.join(workDir, fileName)
+		version = self.get('version', 1)
 
-		if not os.path.exists(workDirCopy):
-			# Artist hasn't made a file that matches what we expect to publish
-			raise PublishError('Could not find the expected file: {}'.format(fileName))
+		# TODO: still need to implement directory publishing
 
-		baseName, ext = os.path.splitext(fileName)
-		versionedFileName = self.getVersionedFileName(versionNum=version, frameNum=frameNum)
-		versionDest = os.path.join(versionsDir, versionedFileName)
-		versionlessFile = os.path.join(relDir, fileName)
+		if isinstance(fileName, FrameSequence):
+			# Publishing a whole sequence
+			newSeq = fileName.copyTo(versionsDir)
+			prefix = '{}.{}'.format(self.get('name'), str(version).zfill(env.VERSION_PADDING))
 
-		shutil.copy(workDirCopy, versionDest)
+			fileName.update(prefix=self.get('name'), changeOnDisk=False)
+			fileName.setDir(relDir)
 
-		if os.path.exists(versionlessFile):
-			os.remove(versionlessFile)
+			# Update destination file sequence to conform to the expected base name and frame padding
+			newSeq.update(prefix=prefix, padding=env.FRAME_PADDING)
 
-		os.link(versionDest, versionlessFile)
+			# Hard link to versionless
+			for versionless, versioned in zip(fileName.getFramesAsFilePaths(), newSeq.getFramesAsFilePaths()):
+				if os.path.exists(versionless):
+					os.remove(versionless)
 
-		# TODO: make versionless and versionDest read-only?
+				os.link(versioned, versionless)
 
-		#from stat import S_IREAD, S_IRGRP, S_SIROTH
-		#os.chmod(versionDest, S_IREAD|S_IRGRP|S_SIROTH)
-		#os.chmod(versionlessFile, S_IREAD|S_IRGRP|S_SIROTH)
+			return newSeq.getFormatted(includeDir=True)
+		elif os.path.isdir(fileName):
+			# Directory publish
+			pass
+		else:
+			# Single file publish
+			baseName, ext = os.path.splitext(fileName)
+			versionedName = '{}.{}.{}'.format(self.get('name'), str(version).zfill(env.VERSION_PADDING), ext)
+			versionedDest = os.path.join(versionsDir, versionedName)
+			versionlessName = '{}.{}'.format(self.get('name'), ext)
+			versionless = os.path.join(relDir, versionlessName)
 
-		version = self.get('version') if not version else version
-		versionInfo = self.get('versionInfo', {})
-		versionInfo[int(version) + 1] = '{}/{}'.format(*env.getCreationInfo()) # Timestamp and user info for publish
+			shutil.copy2(fileName, versionedDest)
 
-		self.set('version', int(version) + 1)
-		self.set('versionInfo', versionInfo)
+			if os.path.exists(versionless):
+				os.remove(versionless)
 
-		self.set('pubVersion', int(version))
+			os.link(versionedDest, versionless)
 
-		return self.get('pubVersion')
+			return versionedDest
+
+		# # TODO: make versionless and versionDest read-only?
+
+		# #from stat import S_IREAD, S_IRGRP, S_SIROTH
+		# #os.chmod(versionDest, S_IREAD|S_IRGRP|S_SIROTH)
+		# #os.chmod(versionlessFile, S_IREAD|S_IRGRP|S_SIROTH)
+
+	def clone(self, container):
+		el = container.getElement(self.get('type'), self.get('name'))
+
+		if el:
+			raise DatabaseError('Element already cloned at the given location')
+
+		el = Element(data=self._data)
+
+		container.addElement(el)
+		el.setParent(container)
+
+		return el
 
 	def makeOverride(self, seq, shot=None):
 		"""Given a particular database.Sequence and database.Shot, creates an override for this
@@ -1644,6 +1699,17 @@ class Element(DatabaseObject):
 		elif isinstance(container, Shot):
 			self.set('parent', '{}/{}'.format(container.get('seq'), container.get('num')))
 
+	def getCreation(self):
+		"""Returns the element's creation timestamp as a datetime object
+
+		Returns:
+		    datetime: The datetime object representing this element's creation timestamp
+		"""
+		creation = self.get('creation')
+		dt = datetime.datetime.strptime(creation, env.DATE_FORMAT)
+
+		return dt
+
 	def getContainer(self):
 		parent = self.get('parent', '')
 
@@ -1730,19 +1796,12 @@ class Element(DatabaseObject):
 			raise ValueError('Invalid element type specified')
 
 		user, time = env.getCreationInfo()
-		ext = env.cfg.config.get('Elements', 'default_ext_' + elType) if env.cfg.config.has_option('Elements', 'default_ext_' + elType) else ''
 
 		element.set('name', name)
-		element.set('ext', ext)
 		element.set('type', elType)
 		element.set('author', user)
 		element.set('creation', time)
 		element.set('version', 1)
-
-		if elType == 'plate':
-			element.set('seq', True)
-		else:
-			element.set('seq', False)
 
 		return element
 
