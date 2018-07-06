@@ -1298,22 +1298,24 @@ class Element(DatabaseObject):
 	    COMP (str): A composite (Nuke)
 	    EFFECT (str): An FX setup - i.e. simulations
 	    PROP (str): A prop
-	    SET (str): A set, the environment a particular shot is set in. Includes the light rig.
+	    SET (str): A set, the environment a particular shot is set in. Can also be the layout element.
+	    LIGHT (str): A light or collection of lights (light rig)
 	    TEXTURE (str): An image representing a texture
 	    PLATE (str): An image/image sequence (footage)
-	    ELEMENT_TYPES (TYPE): A list of all the aforementioned types. Holds what can of elements can be retrieved
+	    ELEMENT_TYPES (TYPE): A list of all the aforementioned types. Holds what kind of elements can be retrieved
 	    	from lookup tables.
 	"""
 
 	SET = 'set'
+	LIGHT = 'light'
 	CHARACTER = 'character'
 	PROP = 'prop'
 	TEXTURE = 'texture'
 	EFFECT = 'effect'
-	COMP = 'nuke'
+	COMP = 'comp'
 	CAMERA = 'camera'
 	PLATE = 'plate'
-	ELEMENT_TYPES = [SET, CHARACTER, PROP, TEXTURE, EFFECT, COMP, CAMERA, PLATE]
+	ELEMENT_TYPES = [SET, LIGHT, CHARACTER, PROP, TEXTURE, EFFECT, COMP, CAMERA, PLATE]
 
 	def getPublishedFile(self, version):
 		"""Given a version (either number or PublishedFile object), returns the
@@ -1780,6 +1782,8 @@ class Element(DatabaseObject):
 
 		if elType == Element.SET:
 			element = Set()
+		elif elType == Element.LIGHT:
+			element = Light()
 		elif elType == Element.CHARACTER:
 			element = Character()
 		elif elType == Element.PROP:
@@ -1809,6 +1813,9 @@ class Element(DatabaseObject):
 		return '{} ({})'.format(self.get('name', 'undefined'), self.get('type'))
 
 class Set(Element):
+	pass
+
+class Light(Element):
 	pass
 
 class Character(Element):
