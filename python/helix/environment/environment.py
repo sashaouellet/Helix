@@ -2,6 +2,8 @@ import os
 from helix.api.exceptions import HelixException
 
 VAR_PREFIX = 'HELIX_'
+DEBUG = False
+HAS_UI = False
 
 def setEnvironment(var, value):
 	os.environ[VAR_PREFIX + var.upper()] = value

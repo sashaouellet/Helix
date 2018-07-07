@@ -22,7 +22,12 @@ class FrameSequence():
 			self._frames = self._getFrameListFromDir(self._dir, prefix, ext, range, padding)
 		else:
 			self._dir, fileName = os.path.split(path)
-			prefix, _, ext = FrameSequence._decompose(fileName, prefix=prefix, ext=ext)
+			decomp = FrameSequence._decompose(fileName, prefix=prefix, ext=ext)
+
+			if not decomp:
+				self._frames = []
+			elif isinstance(decomp, tuple):
+				prefix, _, ext = decomp
 
 			if not prefix or not ext:
 				# Not part of a sequence
