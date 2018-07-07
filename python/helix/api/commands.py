@@ -383,7 +383,7 @@ def main(cmd, argv):
 		if resp in ('y', 'yes'):
 			rmshow(**args)
 	elif cmd == 'mkseq':
-		if not env.getEnvironment('show'):
+		if not env.show:
 			print 'Please pop into a show first'
 			return
 
@@ -395,7 +395,7 @@ def main(cmd, argv):
 
 		mkseq(**args)
 	elif cmd == 'rmseq':
-		if not env.getEnvironment('show'):
+		if not env.show:
 			print 'Please pop into a show first'
 			return
 
@@ -408,7 +408,7 @@ def main(cmd, argv):
 
 		rmseq(**args)
 	elif cmd == 'mkshot':
-		if not env.getEnvironment('show'):
+		if not env.show:
 			print 'Please pop into a show first'
 			return
 
@@ -424,7 +424,7 @@ def main(cmd, argv):
 
 		mkshot(**args)
 	elif cmd == 'rmshot':
-		if not env.getEnvironment('show'):
+		if not env.show:
 			print 'Please pop into a show first'
 			return
 
@@ -439,7 +439,7 @@ def main(cmd, argv):
 		rmshot(**args)
 	elif cmd == 'mke':
 		# Command is irrelevant without the show context set
-		if not env.getEnvironment('show'):
+		if not env.show:
 			print 'Please pop into a show first'
 			return
 
@@ -466,7 +466,7 @@ def main(cmd, argv):
 
 		clone(**args)
 	elif cmd == 'rme':
-		if not env.getEnvironment('show'):
+		if not env.show:
 			print 'Please pop into a show first'
 			return
 
@@ -483,7 +483,7 @@ def main(cmd, argv):
 		rme(**args)
 	elif cmd == 'get':
 		# Command is irrelevant without the show context set
-		if not env.getEnvironment('show'):
+		if not env.show:
 			print 'Please pop into a show first'
 			return
 
@@ -563,7 +563,7 @@ def main(cmd, argv):
 
 		createFile(**args)
 	elif cmd == 'import':
-		if not env.getEnvironment('show'):
+		if not env.show:
 			print 'Please pop into a show first'
 			return
 
@@ -581,7 +581,7 @@ def main(cmd, argv):
 
 		importEl(**args)
 	elif cmd == 'els' or cmd == 'elements':
-		if not env.getEnvironment('show'):
+		if not env.show:
 			print 'Please pop into a show first'
 			return
 
@@ -595,7 +595,7 @@ def main(cmd, argv):
 
 		elements(**args)
 	elif cmd == 'shots':
-		if not env.getEnvironment('show'):
+		if not env.show:
 			print 'Please pop into a show first'
 			return
 
@@ -607,7 +607,7 @@ def main(cmd, argv):
 
 		shots(**args)
 	elif cmd == 'seqs' or cmd == 'sequences':
-		if not env.getEnvironment('show'):
+		if not env.show:
 			print 'Please pop into a show first'
 			return
 
