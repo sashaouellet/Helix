@@ -1,4 +1,4 @@
-class HelixException(BaseException):
+class HelixException(Exception):
 	pass
 
 class DatabaseError(HelixException):
@@ -23,3 +23,6 @@ class ImportError(HelixException):
     """Represents an error that occurs when an Element is imported from pre-existing files
     """
     pass
+
+class EnvironmentError(HelixException):
+	pass

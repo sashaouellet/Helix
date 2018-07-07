@@ -1162,7 +1162,6 @@ class ManagerWindow(QMainWindow):
 if __name__ == '__main__':
 	app = QApplication(sys.argv)
 	dbPath = None
-	cmds.IS_UI = True
 
 	app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt())
 

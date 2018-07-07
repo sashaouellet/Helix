@@ -6,7 +6,6 @@ from helix.api.exceptions import *
 from helix.environment.permissions import PermissionHandler
 
 dbLoc = env.getEnvironment('db')
-IS_UI = False
 
 if not dbLoc:
 	raise KeyError('Database location not set in your environment')
@@ -688,11 +687,8 @@ def handleInput(line):
 			# I really don't like this, but not sure how to handle
 			# the exception argparse raises when typing an invalid command
 			pass
-		except HelixException as e:
-			if IS_UI:
-				raise e
-			else:
-				print str(e)
+		except Exception as e:
+			print str(e)
 
 if __name__ == '__main__':
 	if len(sys.argv) > 2:

@@ -1,4 +1,5 @@
 import os
+from helix.api.exceptions import HelixException
 
 VAR_PREFIX = 'HELIX_'
 
@@ -9,12 +10,9 @@ def getEnvironment(var):
 	env = os.environ.get(VAR_PREFIX + var.upper())
 
 	if not env:
-		raise EnvironmentError('Variable {} not set'.format(env))
+		raise EnvironmentError('Variable {} not set'.format(var))
 
 	return env
-
-def EnvironmentError(HelixException):
-	pass
 
 def getConfigPath():
 	return os.path.join(getEnvironment('home'), 'config.ini')
