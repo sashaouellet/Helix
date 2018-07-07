@@ -98,6 +98,29 @@ class FrameSequence():
 		return frameList
 
 	@staticmethod
+	def asGlobString(fileString):
+		"""Converts the given file string into a glob-able file pattern.
+
+		In other words, replaces #, @, or $F notations with the appropriate
+		amount of "[0-9]" character sequences. No change is made if none
+		of these symbols are found.
+
+		Args:
+		    fileString (str): The file path string to make glob-able
+		"""
+
+		fileString = re.sub(r'#|@', '[0-9]', fileString)
+		houdiniNotationRegx = re.compile(r'\$F(\d+)*')
+		search = houdiniNotationRegx.search(fileString)
+
+		if search:
+			padding = int(search.group(1)) if search.group(1) else 1
+
+			fileString = re.sub(r'\$F(\d+)*', '[0-9]' * padding, fileString)
+
+		return fileString
+
+	@staticmethod
 	def _decompose(file, prefix, ext):
 		"""Decomposes the given file name into its 3 parts: prefix, frame
 		padding, and extension
@@ -473,16 +496,3 @@ class Frame():
 
 	def __str__(self):
 		return 'Frame {} from: {} ({})'.format(self._number, self._prefix, self._ext)
-
-# path1 = '/Volumes/Macintosh MD/Users/spaouellet/Downloads/helixImportElTest/foo/foo.0001.txt'
-path2 = '/Volumes/Macintosh MD/Users/spaouellet/Documents/houdini/toolTests/render'
-dest = '/Volumes/Macintosh MD/Users/spaouellet/Documents/houdini/toolTests/render2'
-# seq1 = FrameSequence(path1)
-# seq2 = FrameSequence(path2)
-
-# newSeq = seq2.copyTo(dest)
-
-# newSeq.update(prefix='foo.001', padding=6)
-
-# print seq1.getFramesAsNumberList(), seq1.isValid()
-# print seq2.getFramesAsNumberList(), seq2.isValid()
