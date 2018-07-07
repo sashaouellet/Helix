@@ -1,4 +1,4 @@
-import sys, os, shlex, shutil, getpass
+import sys, os, shlex, shutil, getpass, traceback
 import argparse
 import helix.environment.environment as env
 from helix.database.database import *
@@ -688,11 +688,20 @@ def handleInput(line):
 			# the exception argparse raises when typing an invalid command
 			pass
 		except Exception as e:
-			print str(e)
+			if env.DEBUG:
+				print traceback.format_exc()
+			else:
+				print str(e)
 
 if __name__ == '__main__':
 	if len(sys.argv) > 2:
-		handleInput(' '.join(sys.argv[2:]))
+		if sys.argv[2] == '--debug':
+			env.DEBUG = True
+			print 'Enabled debug mode'
+			if len(sys.argv) > 3:
+				handleInput(' '.join(sys.argv[3:]))
+		else:
+			handleInput(' '.join(sys.argv[2:]))
 	try:
 		while True:
 			print '\r{user} {show}@{element}>>> '.format(
