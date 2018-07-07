@@ -5,6 +5,7 @@ import helix.environment.environment as env
 import helix.utils.fileutils as fileutils
 from helix.manager.dailies import SlapCompDialog
 from helix.manager.config import ConfigEditorDialog
+from helix.utils.qtutils import ExceptionDialog
 
 import qdarkstyle
 
@@ -363,6 +364,8 @@ class NewElementDialog(QDialog):
 			return
 		except MergeConflictError, e:
 			self.parent().handleSaveConflict(e)
+		except Exception as e:
+			ExceptionDialog(e, msg='Some other detail text', parent=window).exec_()
 
 	def show(self, showObj, seqObj, shotObj):
 		self._show = showObj
@@ -1159,6 +1162,7 @@ class ManagerWindow(QMainWindow):
 if __name__ == '__main__':
 	app = QApplication(sys.argv)
 	dbPath = None
+	cmds.IS_UI = True
 
 	app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt())
 
