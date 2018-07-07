@@ -1,4 +1,4 @@
-import sys, os, shlex, shutil
+import sys, os, shlex, shutil, getpass
 import argparse
 import helix.environment.environment as env
 from helix.database.database import *
@@ -695,7 +695,11 @@ if __name__ == '__main__':
 		handleInput(' '.join(sys.argv[2:]))
 	try:
 		while True:
-			print '\r[HELIX] ',
+			print '\r{user} {show}@{element}>>> '.format(
+				user=getpass.getuser(),
+				show=env.show.get('dirName') if env.show else 'SHOW',
+				element=env.element.get('name') if env.element else 'ELEMENT'
+			),
 			line = sys.stdin.readline()
 
 			handleInput(line)
