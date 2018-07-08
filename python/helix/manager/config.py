@@ -12,11 +12,25 @@ class ConfigEditorDialog(QDialog):
 	def __init__(self, parent=None):
 		super(ConfigEditorDialog, self).__init__(parent)
 
+		self.canEditConfig = parent.permHandler.check('helix.config.edit', silent=True)
 		self.configHandler = env.getConfig()
 
 		uic.loadUi(os.path.join(helix.root, 'ui', 'configEditor.ui'), self)
 		self.makeConnections()
 		self.populateConfigFields()
+
+		if not self.canEditConfig:
+			for child in self.TAB_general.children():
+				if not isinstance(child, QLayout):
+					child.setEnabled(False)
+
+			for child in self.TAB_users.children():
+				if not isinstance(child, QLayout):
+					child.setEnabled(False)
+
+			for child in self.TAB_exe.children():
+				if not isinstance(child, QLayout):
+					child.setEnabled(False)
 
 	def populateConfigFields(self):
 		if self.configHandler.dateFormat:

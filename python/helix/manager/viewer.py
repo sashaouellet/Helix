@@ -2,6 +2,7 @@ import helix
 from helix.database.database import *
 import helix.api.commands as cmds
 import helix.environment.environment as env
+import helix.environment.permissions as perms
 import helix.utils.fileutils as fileutils
 from helix.manager.dailies import SlapCompDialog
 from helix.manager.config import ConfigEditorDialog
@@ -910,6 +911,7 @@ class ManagerWindow(QMainWindow):
 		super(ManagerWindow, self).__init__()
 		uic.loadUi(os.path.join(helix.root, 'ui', 'visualizer.ui'), self)
 
+		self.permHandler = perms.PermissionHandler()
 		self.elTypeFilter = Element.ELEMENT_TYPES
 		self.currentSelectionIndex = None
 		self.editDialog = EditingDialog(self)
@@ -951,6 +953,20 @@ class ManagerWindow(QMainWindow):
 
 		if dbPath:
 			self.handleOpenDB(dbLoc=dbPath)
+
+		self.configureUiForPerms()
+
+	def configureUiForPerms(self):
+		self.checkAction('helix.create.show', self.ACT_newShow)
+		self.checkAction('helix.create.sequence', self.ACT_newSeq)
+		self.checkAction('helix.create.shot', self.ACT_newShot)
+		self.checkAction('helix.create.element', self.ACT_newElement)
+		self.checkAction('helix.config.view', self.ACT_prefGeneral)
+		self.checkAction('helix.config.view', self.ACT_prefPerms)
+		self.checkAction('helix.config.view', self.ACT_prefExe)
+
+	def checkAction(self, permNode, action):
+		action.setEnabled(self.permHandler.check(permNode, silent=True))
 
 	def dragEnterEvent(self, event):
 		if event.mimeData().hasUrls():
@@ -1192,6 +1208,8 @@ class ManagerWindow(QMainWindow):
 			self.ACT_newElement.setEnabled(True)
 			self.ACT_slapComp.setEnabled(True)
 
+		self.configureUiForPerms()
+
 	def handleDataSelection(self, currentIndex, oldIndex):
 		if not currentIndex or not currentIndex.isValid():
 			self.currentSelectionIndex = None
@@ -1259,28 +1277,35 @@ if __name__ == '__main__':
 	app = QApplication(sys.argv)
 	dbPath = None
 
+	app.setOrganizationName('Helix')
+	app.setApplicationName('Manager')
 	app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt())
 	app.setOverrideCursor(QCursor(Qt.WaitCursor))
+
+	settings = QSettings()
+	showSplash = settings.value('ui/showSplash', False).toBool()
 
 	if len(sys.argv) >= 2:
 		dbPath = sys.argv[1]
 
-	pixmap = QPixmap(os.path.join(helix.root, 'ui', 'splash.jpg'))
-	splash = QSplashScreen(pixmap,  Qt.WindowStaysOnTopHint)
-	possibleMessages = ['Reticulating splines...', 'Constructing additional pylons...', 'Mining cryptocurrency...']
-	import random
-	splash.show()
-	splash.raise_()
-	splash.showMessage(random.choice(possibleMessages), alignment=Qt.AlignBottom | Qt.AlignLeft, color=Qt.white)
-	app.processEvents()
+	if showSplash:
+		pixmap = QPixmap(os.path.join(helix.root, 'ui', 'splash.jpg'))
+		splash = QSplashScreen(pixmap,  Qt.WindowStaysOnTopHint)
+		possibleMessages = ['Reticulating splines...', 'Constructing additional pylons...', 'Mining cryptocurrency...']
+		import random
+		splash.show()
+		splash.raise_()
+		splash.showMessage(random.choice(possibleMessages), alignment=Qt.AlignBottom | Qt.AlignLeft, color=Qt.white)
+		app.processEvents()
 
 	window = ManagerWindow(dbPath=dbPath)
 
-	# The "I want to see my splash screen damn it" cheat
-	QThread.sleep(4)
+	if showSplash:
+		# The "I want to see my splash screen damn it" cheat
+		QThread.sleep(4)
+		splash.finish(window)
 
 	window.show()
-	splash.finish(window)
 	window.setWindowState(window.windowState() & Qt.WindowMinimized | Qt.WindowActive)
 	window.raise_()
 	window.activateWindow()
