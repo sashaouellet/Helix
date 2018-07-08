@@ -949,8 +949,6 @@ class ManagerWindow(QMainWindow):
 		self.makeConnections()
 		self.setAcceptDrops(True)
 
-		self.show()
-
 		if dbPath:
 			self.handleOpenDB(dbLoc=dbPath)
 
@@ -1248,22 +1246,45 @@ class ManagerWindow(QMainWindow):
 			self.ACT_reload.setEnabled(True)
 
 	def handleDBReload(self):
+		QCoreApplication.instance().setOverrideCursor(QCursor(Qt.WaitCursor))
 		del self.db
 
 		self.db = Database(str(self.dbLoc))
 
 		self.model.setShows(self.db.getShows())
 		self.handleDataSelection(QModelIndex(), QModelIndex())
+		QCoreApplication.instance().restoreOverrideCursor()
 
 if __name__ == '__main__':
 	app = QApplication(sys.argv)
 	dbPath = None
 
 	app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt())
+	app.setOverrideCursor(QCursor(Qt.WaitCursor))
 
 	if len(sys.argv) >= 2:
 		dbPath = sys.argv[1]
 
+	pixmap = QPixmap(os.path.join(helix.root, 'ui', 'splash.jpg'))
+	splash = QSplashScreen(pixmap,  Qt.WindowStaysOnTopHint)
+	possibleMessages = ['Reticulating splines...', 'Constructing additional pylons...', 'Mining cryptocurrency...']
+	import random
+	splash.show()
+	splash.raise_()
+	splash.showMessage(random.choice(possibleMessages), alignment=Qt.AlignBottom | Qt.AlignLeft, color=Qt.white)
+	app.processEvents()
+
 	window = ManagerWindow(dbPath=dbPath)
+
+	# The "I want to see my splash screen damn it" cheat
+	QThread.sleep(4)
+
+	window.show()
+	splash.finish(window)
+	window.setWindowState(window.windowState() & Qt.WindowMinimized | Qt.WindowActive)
+	window.raise_()
+	window.activateWindow()
+	window.setWindowState(Qt.WindowMaximized)
+	app.restoreOverrideCursor()
 
 	sys.exit(app.exec_())
