@@ -5,7 +5,7 @@ import helix.environment.environment as env
 import helix.utils.fileutils as fileutils
 from helix.manager.dailies import SlapCompDialog
 from helix.manager.config import ConfigEditorDialog
-from helix.utils.qtutils import ExceptionDialog
+from helix.utils.qtutils import ExceptionDialog, FileChooserLayout
 
 import qdarkstyle
 
@@ -188,16 +188,112 @@ class ElementTableItem(QLabel):
 
 	def handlePublish(self):
 		env.element = self.element
-
-		try:
-			cmds.pub()
-			QMessageBox.warning(self, 'Publish', 'Successfully published new version')
-		except PublishError, e:
-			QMessageBox.warning(self, 'Publish error', str(e))
-			return
+		publishDialog = PublishDialog(self.parent, self.element)
+		publishDialog.exec_()
 
 	def handleRollback(self):
 		self.parent.rollbackDialog.show(self.element)
+
+class PublishDialog(QDialog):
+	def __init__(self, parent, element):
+		super(PublishDialog, self).__init__(parent)
+		self.setWindowTitle('Publish {}'.format(str(element)))
+
+		self.layout = QVBoxLayout()
+
+		self.layout.addWidget(QLabel('Select a file or folder to publish. For sequences, you can pick any 1 file from the sequence'))
+
+		self.fileChooser = FileChooserLayout(self, defaultText=element.getDiskLocation(), selectionMode=FileChooserLayout.ANY)
+		self.layout.addLayout(self.fileChooser)
+
+		self.publishLabel = QLabel('Publishing as: -')
+		self.layout.addWidget(self.publishLabel)
+
+		# Sequence options
+		self.seqGroupBox = QGroupBox('Sequence Options')
+
+		grpLayout = QVBoxLayout()
+		self.ignoreChk = QCheckBox('Ignore missing frames')
+		self.ignoreChk.setToolTip('When checked, you will not be warned about frames missing - the operation will just continue and the published output will also be missing these frames.')
+		grpLayout.addWidget(self.ignoreChk)
+
+		rangeLayout = QHBoxLayout()
+		self.rangeChk = QCheckBox('Specific range')
+		self.rangeChk.setToolTip('When checked, the numbers specified determine the subset of the found frame range that will be published. When unchecked, the whole sequence is published.')
+		self.rangeChk.clicked.connect(self.handleRangeCheck)
+		rangeLayout.addWidget(self.rangeChk)
+		self.range1 = QSpinBox()
+		self.range2 = QSpinBox()
+		self.range1.setEnabled(False)
+		self.range2.setEnabled(False)
+		rangeLayout.addWidget(self.range1)
+		rangeLayout.addWidget(self.range2)
+
+		grpLayout.addLayout(rangeLayout)
+		self.layout.addWidget(self.seqGroupBox)
+		self.seqGroupBox.setLayout(grpLayout)
+		self.seqGroupBox.setEnabled(False)
+
+		# Dialog buttons
+		buttonLayout = QHBoxLayout()
+		self.pubButton = QPushButton('Publish')
+		self.cancelButton = QPushButton('Cancel')
+		buttonLayout.addWidget(self.cancelButton)
+		buttonLayout.addWidget(self.pubButton)
+		buttonLayout.insertStretch(0)
+		self.layout.addLayout(buttonLayout)
+
+		self.setLayout(self.layout)
+
+		self.makeConnections()
+		self.updatePublishLabel(self.fileChooser.getFile())
+
+	def makeConnections(self):
+		self.pubButton.clicked.connect(self.accept)
+		self.cancelButton.clicked.connect(self.reject)
+		self.fileChooser.fileChosenSignal.connect(self.handleFileChosen)
+
+	def handleRangeCheck(self):
+		self.range1.setEnabled(self.rangeChk.isChecked())
+		self.range2.setEnabled(self.rangeChk.isChecked())
+
+	def handleFileChosen(self, file):
+		self.updatePublishLabel(str(file))
+
+	def updatePublishLabel(self, file):
+		sequence = helix.utils.fileclassification.FrameSequence(file)
+		publishAs = '-'
+
+		self.seqGroupBox.setEnabled(False)
+
+		if os.path.isdir(file):
+			publishAs = 'Folder'
+		elif os.path.isfile(file) and sequence.getRange() != ():
+			publishAs = 'Sequence'
+			self.seqGroupBox.setEnabled(True)
+			range = sequence.getRange()
+			self.range1.setValue(range[0])
+			self.range1.setMinimum(range[0])
+			self.range1.setMaximum(range[1])
+			self.range2.setValue(range[1])
+			self.range2.setMinimum(range[0])
+			self.range2.setMaximum(range[1])
+		elif os.path.isfile(file):
+			publishAs = 'Single File'
+
+		self.publishLabel.setText('Publishing as: {}'.format(publishAs))
+
+	def accept(self):
+		try:
+			file = self.fileChooser.getFile()
+			rng = () if not self.seqGroupBox.isEnabled() else (int(self.range1.value()), int(self.range2.value()))
+			force = True if not self.seqGroupBox.isEnabled() else self.ignoreChk.isChecked()
+
+			cmds.pub(file, range=rng, force=force)
+		except Exception as e:
+			ExceptionDialog(e, parent=self).exec_()
+
+		super(PublishDialog, self).accept()
 
 class NewShowDialog(QDialog):
 	def __init__(self, parent):
@@ -365,7 +461,7 @@ class NewElementDialog(QDialog):
 		except MergeConflictError, e:
 			self.parent().handleSaveConflict(e)
 		except Exception as e:
-			ExceptionDialog(e, msg='Some other detail text', parent=window).exec_()
+			ExceptionDialog(e, parent=window).exec_()
 
 	def show(self, showObj, seqObj, shotObj):
 		self._show = showObj
