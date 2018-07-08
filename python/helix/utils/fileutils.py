@@ -104,6 +104,19 @@ def formatShotDir(seqNum, shotNum=None):
 
 	return SEQUENCE_FORMAT.format(str(seqNum).zfill(env.SEQUENCE_SHOT_PADDING))
 
+def getFramePadding(fileName, versioned=True):
+	frameRegex = re.compile(r'(\.\d+)')
+	search = frameRegex.findall(fileName)
+
+	if search:
+		if len(search) == 1 and versioned:
+			# Matched number string is assumed to be the version number
+			return None
+		else:
+			return search[-1][1:] # Return last match, stripping off the '.'
+
+	return None
+
 def convertToCamelCase(input, firstIsLowercase=False):
 	"""Given an input string of words (separated by space), converts
 	it back to camel case.
