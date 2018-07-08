@@ -172,7 +172,7 @@ class Database(object):
 						print 'Diff found in original data is not found in the current data'
 						continue
 
-					if not ERROR_BUBBLING:
+					if not env.HAS_UI:
 						while resp not in ('y', 'n'):
 							print 'Conflicting changes: {}'.format(diff)
 							print 'Discard local changes? Specifying no (n) will overwrite the changes with your local ones. (y/n) ',
@@ -191,9 +191,13 @@ class Database(object):
 
 		with open(self._dbPath, 'w+') as f:
 			self._translateTables()
-			json.dump(DatabaseObject.encode(self._data), f, sort_keys=True, indent=4, separators=(',', ': '))
+			data = json.dumps(DatabaseObject.encode(self._data), sort_keys=True, indent=4, separators=(',', ': '))
 
-			self._origData = copy.deepcopy(self._data)
+			f.write(data)
+			f.close()
+
+		self._data = DatabaseObject.decode(json.loads(data))
+		self._origData = copy.deepcopy(self._data)
 
 		print 'Done saving'
 		return result
@@ -1211,6 +1215,17 @@ class PublishedFile(DatabaseObject):
 	def version(self):
 		return int(self.get('version', 1))
 
+	def file(self):
+		return self.get('filePath')
+
+	def getFilePaths(self):
+		filePathString = self.file()
+		globString = FrameSequence.asGlobString(filePathString)
+
+		import glob
+
+		return glob.glob(globString)
+
 class WorkFile(DatabaseObject):
 	def __init__(self, *args, **kwargs):
 		el = kwargs.pop('element', None)
@@ -1322,13 +1337,18 @@ class Element(DatabaseObject):
 		file(s) that were previously published by the user as a list of file path(s)
 
 		Args:
-		    version (int / PublishedFile): The publish version to get the files from
+		    version (str / int / PublishedFile): The publish version to get the files from
 		"""
-		if isinstance(version, PublishedFile):
-			version = version.version()
+		pf = None
+		if isinstance(version, (int, str)):
+			pf = self.get('versionInfo', {}).get(str(version))
+		elif isinstance(version, PublishedFile):
+			pf = version
 
-		if not isinstance(version, int):
-			raise ValueError('Version provided must be an integer')
+		if not pf:
+			raise ValueError('Could not find a published file record for the given version: {}'.format(version))
+
+		return pf
 
 	def getWorkFile(self, path=None):
 		wf = WorkFile(path=path, element=self)
@@ -1403,54 +1423,34 @@ class Element(DatabaseObject):
 		"""
 		relDir = self.getDiskLocation(workDir=False)
 		versionsDir = os.path.join(relDir, '.versions')
-		sequence = self.get('seq', 'False') == 'True'
-		baseName, ext = os.path.splitext(self.getFileName(sequence=sequence))
 		currVersion = self.get('pubVersion', -1)
-		currVersionFile = os.path.join(versionsDir, self.getVersionedFileName(versionNum=currVersion))
 		prevVersion = int(currVersion) - 1 if not version else int(version)
+
+		if currVersion == -1:
+			raise PublishError('No published records for this element.')
 
 		if prevVersion < 1:
 			raise PublishError('Cannot rollback prior to version 1. Current version found: {}'.format(currVersion))
 
-		if sequence:
-			prevVersionFile = os.path.join(versionsDir, '{}.v{}{}'.format(baseName, str(prevVersion).zfill(env.VERSION_PADDING), ext))
-			prevSeq = glob.glob(prevVersionFile)
+		prevPf = self.getPublishedFile(prevVersion)
+		prevFiles = prevPf.getFilePaths()
 
-			if not prevSeq:
-				raise PublishError('Rollback failed. Rollback version files are missing: {}'.format(prevVersionFile))
+		if not prevFiles:
+			# Nothing found by glob, files deleted?
+			raise PublishError('No files found for previously published version: {}'.format(prevVersion))
 
-			for file in prevSeq:
-				fileName = os.path.split(file)[1]
-				match = re.match(r'^(.+)\.(\d+)\..+$', fileName)
+		# Remove old versionless
+		for file in os.listdir(relDir):
+				if file != '.versions':
+					os.remove(os.path.join(relDir, file))
 
-				if match:
-					versionlessFile = os.path.join(relDir, '{}.{}{}'.format(match.group(1), match.group(2), ext))
+		for path in prevFiles:
+			framePadding = fileutils.getFramePadding(os.path.split(path)[-1])
+			_, ext = os.path.splitext(path)
+			versionlessName = '{}{}{}'.format(self.get('name'), '.' + framePadding if framePadding else '', ext if not os.path.isdir(path) else '')
+			versionlessDest = os.path.join(relDir, versionlessName)
 
-					print 'Updating link: {}'.format(versionlessFile), '-->', file
-
-					if os.path.exists(versionlessFile):
-						os.remove(versionlessFile)
-
-					os.link(file, versionlessFile)
-
-			self.set('pubVersion', prevVersion)
-		else:
-			prevVersionFile = os.path.join(versionsDir, self.getVersionedFileName(versionNum=prevVersion))
-
-			if not os.path.exists(prevVersionFile):
-				raise PublishError('Rollback failed. Rollback version file is missing: {}'.format(prevVersionFile))
-
-			versionlessFile = os.path.join(relDir, '{}{}'.format(baseName, ext))
-
-			print 'Updating link: {}'.format(versionlessFile), '-->', prevVersionFile
-
-			if os.path.exists(versionlessFile):
-				os.remove(versionlessFile)
-
-			os.link(prevVersionFile, versionlessFile)
-			self.set('pubVersion', prevVersion)
-
-		return prevVersion
+			os.link(path, versionlessDest)
 
 	def versionUp(self, sourceFile, range=(), ignoreMissing=False):
 		"""Publishes the current element to the next version, copying the proper file(s) to the
@@ -1465,6 +1465,12 @@ class Element(DatabaseObject):
 		Returns:
 		    bool: Whether the publish action succeeded or not.
 		"""
+
+		# If the source file is not an absolute path, the user probably meant it to be
+		# passed in relative to the element's work directory
+		if not os.path.isabs(sourceFile):
+			sourceFile = os.path.join(self.getDiskLocation(), sourceFile)
+
 		if not os.path.exists(sourceFile):
 			raise PublishError('The given file doesn\'t exist: {}'.format(sourceFile))
 
@@ -1481,8 +1487,6 @@ class Element(DatabaseObject):
 		versionInfo = self.get('versionInfo', {})
 
 		if isSeq:
-			print 'Publishing sequence...'
-
 			if not sequence.isValid():
 				raise PublishError('No associated sequence found for the file given: {}'.format(sourceFile))
 
@@ -1492,12 +1496,10 @@ class Element(DatabaseObject):
 				raise PublishError('Missing frames from sequence: {}'.format(FrameSequence.prettyPrintFrameList(missing)))
 
 			versionedSeq = self.publishFile(sequence)
-			versionInfo[int(version)] = PublishedFile(version=int(version), filePath=versionedSeq)
+			versionInfo[str(version)] = PublishedFile(version=int(version), filePath=versionedSeq)
 		else:
-			print 'Publishing single file/folder...'
-
 			versioned = self.publishFile(sourceFile)
-			versionInfo[int(version)] = PublishedFile(version=int(version), filePath=versioned)
+			versionInfo[str(version)] = PublishedFile(version=int(version), filePath=versioned)
 
 		self.set('versionInfo', versionInfo)
 		self.set('version', version + 1)
@@ -1522,9 +1524,8 @@ class Element(DatabaseObject):
 		versionsDir = os.path.join(relDir, '.versions')
 		version = self.get('version', 1)
 
-		# TODO: still need to implement directory publishing
-
 		if isinstance(fileName, FrameSequence):
+			print 'Publishing sequence...'
 			# Publishing a whole sequence
 			newSeq = fileName.copyTo(versionsDir)
 			prefix = '{}.{}'.format(self.get('name'), str(version).zfill(env.VERSION_PADDING))
@@ -1535,30 +1536,49 @@ class Element(DatabaseObject):
 			# Update destination file sequence to conform to the expected base name and frame padding
 			newSeq.update(prefix=prefix, padding=env.FRAME_PADDING)
 
+			# Remove old versionless
+			for file in os.listdir(relDir):
+				if file != '.versions':
+					os.remove(os.path.join(relDir, file))
+
 			# Hard link to versionless
 			for versionless, versioned in zip(fileName.getFramesAsFilePaths(), newSeq.getFramesAsFilePaths()):
-				if os.path.exists(versionless):
-					os.remove(versionless)
-
 				os.link(versioned, versionless)
 
 			return newSeq.getFormatted(includeDir=True)
 		elif os.path.isdir(fileName):
+			print 'Publishing folder...'
 			# Directory publish
-			pass
-		else:
-			# Single file publish
-			baseName, ext = os.path.splitext(fileName)
-			versionedName = '{}.{}.{}'.format(self.get('name'), str(version).zfill(env.VERSION_PADDING), ext)
+			baseDirectory = os.path.split(fileName)[-1]
+			versionedName = '{}.{}'.format(self.get('name'), str(version).zfill(env.VERSION_PADDING))
 			versionedDest = os.path.join(versionsDir, versionedName)
-			versionlessName = '{}.{}'.format(self.get('name'), ext)
+			versionlessName = self.get('name')
 			versionless = os.path.join(relDir, versionlessName)
 
+			# Remove old versionless
+			for file in os.listdir(relDir):
+				if file != '.versions':
+					os.remove(os.path.join(relDir, file))
+
+			shutil.copytree(fileName, versionedDest)
+			os.link(versionedDest, versionless)
+
+			return versionedDest
+		else:
+			print 'Publishing single file...'
+			# Single file publish
+			baseName, ext = os.path.splitext(fileName)
+			versionedName = '{}.{}{}'.format(self.get('name'), str(version).zfill(env.VERSION_PADDING), ext)
+			versionedDest = os.path.join(versionsDir, versionedName)
+			versionlessName = '{}{}'.format(self.get('name'), ext)
+			versionless = os.path.join(relDir, versionlessName)
+
+			# Remove old versionless
+			for file in os.listdir(relDir):
+				if file != '.versions':
+					os.remove(os.path.join(relDir, file))
+
 			shutil.copy2(fileName, versionedDest)
-
-			if os.path.exists(versionless):
-				os.remove(versionless)
-
 			os.link(versionedDest, versionless)
 
 			return versionedDest
