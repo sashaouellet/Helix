@@ -145,9 +145,9 @@ def get(elType, name, sequence=None, shot=None):
 	print 'Working on {}'.format(element)
 
 # Element-context commands
-def pub(file, range=(), force=True):
+def pub(file, range=(), force=False):
 	perms.check('helix.publish')
-	env.element.versionUp(file, range=range, ignoreMissing=not force)
+	env.element.versionUp(file, range=range, ignoreMissing=force)
 	db.save()
 
 	print 'Published version: {}'.format(env.element.get('pubVersion'))
@@ -506,10 +506,16 @@ def main(cmd, argv):
 		parser = argparse.ArgumentParser(prog='pub', description='Publish a new version of the current working element')
 
 		parser.add_argument('file', help='The path to the file OR frame from a sequence OR directory to publish')
-		parser.add_argument('--range', '-r', default=None, help='The number range to publish a given frame sequence with. By default will attempt to publish the largest range found.')
+		parser.add_argument('--range', '-r', type=int, nargs='+', default=None, help='The number range to publish a given frame sequence with. By default will attempt to publish the largest range found.')
 		parser.add_argument('--force', '-f', action='store_true', help='By default, frame sequences will not publish if any frames are missing within the range (specified or found). Use this flag to force the publish to occur anyway.')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
+
+		if 'range' in args:
+			if len(args['range']) == 1:
+				args['range'] = (args['range'], args['range'])
+			else:
+				args['range'] = (args['range'][0], args['range'][1])
 
 		pub(**args)
 	elif cmd == 'roll':
