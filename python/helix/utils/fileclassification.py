@@ -8,7 +8,7 @@ __date__ = 11/27/17
 import os, re, shutil
 
 class FrameSequence():
-	FRAME_NAME_PATTERN = r'^(?P<prefix>{})[\.\-_](?P<framePadding>\d+)\.(?P<ext>{})$'
+	FRAME_NAME_PATTERN = r'^(?P<prefix>{})(?P<framePadding>[\.\-_]\d+)\.(?P<ext>{})$'
 	STANDARD_FRAME_FORMAT = '#'
 	HOUDINI_FRAME_FORMAT = '$F'
 	GLOB_FORMAT = '[0-9]'
@@ -83,7 +83,7 @@ class FrameSequence():
 
 					foundArbitrary = True
 				else:
-					if len(parts[1]) != padding: # Must continue to match padding length
+					if len(parts[1]) - 1 != padding: # Must continue to match padding length
 						continue
 
 				# Is the found frame within the range, if we have specified a range to look for?
@@ -153,8 +153,28 @@ class FrameSequence():
 
 		return None
 
+	def first(self):
+		return self._range[0]
+
+	def last(self):
+		return self._range[1]
+
 	def getFrames(self):
 		return self._frames
+
+	def getFrame(self, num):
+		try:
+			num = int(num)
+		except:
+			raise ValueError('Specified frame number is not a number: {}'.format(num))
+
+		if len(self._range) == 2:
+			if num < self._range[0] or num > self._range[1]:
+				raise ValueError('Specified frame number is beyond this sequence\'s range: {}-{}'.format(*self._range))
+			else:
+				for f in self._frames:
+					if f.getNumber() == num:
+						return f
 
 	def getFramesAsFilePaths(self):
 		return [os.path.join(self._dir, f.getPath()) for f in self._frames]
@@ -419,12 +439,15 @@ class FrameSequence():
 		pass
 
 class Frame():
-	def __init__(self, prefix, framePadding, ext, directory, frameNumSep='.'):
+	def __init__(self, prefix, framePadding, ext, directory):
 		self._prefix = prefix
+		self._frameNumSep = framePadding[0]
+		framePadding = framePadding[1:]
 		self._padding, self._number = self._interpretFramePadding(framePadding)
 		self._ext = ext
-		self._frameNumSep = frameNumSep
 		self._dir = directory
+
+		print str(self)
 
 	def _interpretFramePadding(self, framePadding):
 		"""Given a string that represents the frame padding portion

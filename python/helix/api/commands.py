@@ -667,6 +667,13 @@ def main(cmd, argv):
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
 		getenv(**args)
+	elif cmd == 'debug':
+		env.DEBUG = not env.DEBUG
+
+		if env.DEBUG:
+			print 'Enabled debug mode'
+		else:
+			print 'Disabled debug mode'
 	elif cmd == 'exit' or cmd == 'quit':
 		exit()
 	else:

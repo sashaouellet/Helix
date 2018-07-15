@@ -6,7 +6,10 @@ import helix.environment.permissions as perms
 import helix.utils.fileutils as fileutils
 from helix.manager.dailies import SlapCompDialog
 from helix.manager.config import ConfigEditorDialog
+from helix.manager.console import Console
+from helix.manager.element import ElementViewWidget
 from helix.utils.qtutils import ExceptionDialog, FileChooserLayout
+from helix.utils.qtutils import Node
 
 import qdarkstyle
 
@@ -17,54 +20,19 @@ from PyQt4 import uic
 import os
 from datetime import datetime
 
-class Node(object):
-	def __init__(self, data=None):
-		self._data = data
-
-		if type(data) == tuple:
-			self._data = list(data)
-
-		if type(data) in (str, unicode) or not hasattr(data, '__getitem__'):
-			self._data = [data]
-
-		self._colCount = len(self._data)
-		self._children = []
-		self._parent = None
-		self._row = 0
-
-	def data(self, col):
-		if col >= 0 and col < len(self._data):
-			return self._data[col]
-
-	def columnCount(self):
-		return self._colCount
-
-	def childCount(self):
-		return len(self._children)
-
-	def child(self, row):
-		if row >= 0 and row < self.childCount():
-			return self._children[row]
-
-	def parent(self):
-		return self._parent
-
-	def row(self):
-		return self._row
-
-	def addChild(self, child):
-		child._parent = self
-		child._row = len(self._children)
-		self._children.append(child)
-		self._colCount = max(child.columnCount(), self._colCount)
-
-		return child
-
 class ShowModel(QAbstractItemModel):
 	def __init__(self, shows, parent=None):
 		super(ShowModel, self).__init__(parent)
 
 		self.setShows(shows)
+
+	def getShowIndexes(self):
+		indexes = []
+
+		for i in range(self._root.childCount()):
+			indexes.append(self.index(i, 0))
+
+		return indexes
 
 	def setShows(self, shows):
 		self.beginResetModel()
@@ -200,6 +168,8 @@ class PublishDialog(QDialog):
 		super(PublishDialog, self).__init__(parent)
 		self.setWindowTitle('Publish {}'.format(str(element)))
 
+		self.element = element
+
 		self.layout = QVBoxLayout()
 
 		self.layout.addWidget(QLabel('Select a file or folder to publish. For sequences, you can pick any 1 file from the sequence'))
@@ -287,10 +257,21 @@ class PublishDialog(QDialog):
 	def accept(self):
 		try:
 			file = self.fileChooser.getFile()
-			rng = () if not self.seqGroupBox.isEnabled() else (int(self.range1.value()), int(self.range2.value()))
-			force = True if not self.seqGroupBox.isEnabled() else self.ignoreChk.isChecked()
+			rng = () if not self.seqGroupBox.isEnabled() or not self.rangeChk.isChecked() else (int(self.range1.value()), int(self.range2.value()))
+			force = False if not self.seqGroupBox.isEnabled() else self.ignoreChk.isChecked()
+			cmd = ['pub', '"{}"'.format(file)]
 
-			cmds.pub(file, range=rng, force=force)
+			if rng != ():
+				cmd.append('--range')
+				cmd.append(str(rng[0]))
+				cmd.append(str(rng[1]))
+
+			if force:
+				cmd.append('--force')
+
+			self.parent().console.injectGetElement(self.element)
+			print cmd
+			self.parent().console.inject(cmd)
 		except Exception as e:
 			ExceptionDialog(e, parent=self).exec_()
 
@@ -922,6 +903,12 @@ class ManagerWindow(QMainWindow):
 		self.rollbackDialog = RollbackDialog(self)
 		self.importElementDialog = ImportElementDialog(self)
 		self.findDialog = FindDialog(self)
+		self.console = Console(self)
+		self.elViewer = None
+		self.elViewerHidden = True
+
+		self.addDockWidget(Qt.RightDockWidgetArea, self.console)
+		# self.removeDockWidget(self.console)
 
 		uic.loadUi(os.path.join(helix.root, 'ui', 'editingDialog.ui'), self.editDialog)
 		self.editDialog.makeConnections()
@@ -1013,8 +1000,11 @@ class ManagerWindow(QMainWindow):
 		self.ACT_prefPerms.triggered.connect(lambda: self.handleConfigEditor(1))
 		self.ACT_prefExe.triggered.connect(lambda: self.handleConfigEditor(2))
 
-		self.ACT_slapComp.triggered.connect(self.handleSlapComp)
-		self.ACT_slapComp.setEnabled(False)
+		self.ACT_console.triggered.connect(self.toggleConsole)
+		self.ACT_elView.triggered.connect(self.toggleElementViewer)
+
+		self.ACT_about.triggered.connect(self.handleAbout)
+		self.ACT_wiki.triggered.connect(lambda: QDesktopServices.openUrl(QUrl('http://www.github.com/sashaouellet/Helix/wiki')))
 
 		self.MENU_elementTypes.clear()
 		self.MENU_elementTypes.setWindowTitle('Element Type Filter')
@@ -1030,6 +1020,22 @@ class ManagerWindow(QMainWindow):
 		self.MENU_elementTypes.addSeparator()
 		self.MENU_elementTypes.addAction('View All').triggered.connect(lambda: self.handleElementTypeFilter(True))
 		self.MENU_elementTypes.addAction('Hide All').triggered.connect(lambda: self.handleElementTypeFilter(False))
+
+	def toggleElementViewer(self):
+		if self.elViewerHidden:
+			self.restoreDockWidget(self.elViewer)
+			self.elViewerHidden = False
+		elif not self.elViewerHidden:
+			self.removeDockWidget(self.elViewer)
+			self.elViewerHidden = True
+
+	def toggleConsole(self):
+		if self.console._hidden:
+			self.restoreDockWidget(self.console)
+			self.console._hidden = False
+		elif not self.console._hidden:
+			self.removeDockWidget(self.console)
+			self.console._hidden = True
 
 	def handleConfigEditor(self, tabIndex):
 		dialog = ConfigEditorDialog(self)
@@ -1179,6 +1185,22 @@ class ManagerWindow(QMainWindow):
 
 		self.editDialog.setItem(item.element)
 
+	def buildContextMenu(self, obj):
+		self.MENU_contextMenu.clear()
+
+		if obj == Show:
+			self.MENU_contextMenu.setTitle('Show')
+		elif obj == Sequence:
+			self.MENU_contextMenu.setTitle('Sequence')
+		elif obj == Shot:
+			self.MENU_contextMenu.setTitle('Shot')
+
+			# Add actions
+			self.ACT_slapComp = QAction('Auto Slap Comp...', self.MENU_contextMenu)
+			self.ACT_slapComp.triggered.connect(self.handleSlapComp)
+
+			self.MENU_contextMenu.addAction(self.ACT_slapComp)
+
 	def checkSelection(self):
 		self.ACT_newSeq.setEnabled(False)
 		self.ACT_newShot.setEnabled(False)
@@ -1193,20 +1215,20 @@ class ManagerWindow(QMainWindow):
 		item = self.currentSelectionIndex.internalPointer().data(0)
 
 		if isinstance(item, Show):
+			self.buildContextMenu(Show)
 			self.ACT_newSeq.setEnabled(True)
 			self.ACT_newShot.setEnabled(False)
 			self.ACT_newElement.setEnabled(True)
-			self.ACT_slapComp.setEnabled(False)
 		elif isinstance(item, Sequence):
+			self.buildContextMenu(Sequence)
 			self.ACT_newSeq.setEnabled(True)
 			self.ACT_newShot.setEnabled(True)
 			self.ACT_newElement.setEnabled(True)
-			self.ACT_slapComp.setEnabled(False)
 		elif isinstance(item, Shot):
+			self.buildContextMenu(Shot)
 			self.ACT_newSeq.setEnabled(False)
 			self.ACT_newShot.setEnabled(True)
 			self.ACT_newElement.setEnabled(True)
-			self.ACT_slapComp.setEnabled(True)
 
 		self.configureUiForPerms()
 
@@ -1227,7 +1249,11 @@ class ManagerWindow(QMainWindow):
 		container = currentIndex.internalPointer().data(0)
 
 		if isinstance(container, Show) and container != env.show:
-			cmds.pop(container.get('name'))
+			self.console.inject(['pop', '"{}"'.format(container.get('name'))])
+			self.elViewer = ElementViewWidget(container.getAllElements(), self).asDockable()
+
+			self.addDockWidget(Qt.BottomDockWidgetArea, self.elViewer)
+			# self.removeDockWidget(self.elViewer)
 
 		for el in container.getElements():
 			if el.get('type') not in self.elTypeFilter:
@@ -1263,6 +1289,12 @@ class ManagerWindow(QMainWindow):
 			self.VIEW_cols.selectionModel().currentChanged.connect(self.handleDataSelection)
 			self.ACT_reload.setEnabled(True)
 
+			indexes = self.model.getShowIndexes()
+
+			if indexes:
+				self.VIEW_cols.setCurrentIndex(indexes[0])
+				self.handleDataSelection(indexes[0], None)
+
 	def handleDBReload(self):
 		QCoreApplication.instance().setOverrideCursor(QCursor(Qt.WaitCursor))
 		del self.db
@@ -1272,6 +1304,31 @@ class ManagerWindow(QMainWindow):
 		self.model.setShows(self.db.getShows())
 		self.handleDataSelection(QModelIndex(), QModelIndex())
 		QCoreApplication.instance().restoreOverrideCursor()
+
+	def handleAbout(self):
+		dialog = QDialog(self)
+
+		dialog.setWindowTitle('About Helix')
+		dialog.resize(340, 120)
+
+		layout = QVBoxLayout()
+		label1 = QLabel('<p style="line-height:125">Helix is a project and asset management system developed and maintained by <a href="http://www.sashaouellet.com">Sasha Ouellet</a></p>')
+		label1.setWordWrap(True)
+		label1.setOpenExternalLinks(True)
+		label1.setTextFormat(Qt.RichText);
+		label1.setTextInteractionFlags(Qt.TextBrowserInteraction)
+		layout.addWidget(label1)
+
+		label2 = QLabel('<p style="line-height:125">Find this project on <a href="http://www.github.com/sashaouellet/Helix">Github</a></p>')
+		label2.setWordWrap(True)
+		label2.setOpenExternalLinks(True)
+		label2.setTextFormat(Qt.RichText);
+		label2.setTextInteractionFlags(Qt.TextBrowserInteraction)
+		layout.addWidget(label2)
+
+		dialog.setLayout(layout)
+
+		dialog.exec_()
 
 if __name__ == '__main__':
 	app = QApplication(sys.argv)
@@ -1305,11 +1362,23 @@ if __name__ == '__main__':
 		QThread.sleep(4)
 		splash.finish(window)
 
+	window.setWindowIcon(QIcon(os.path.join(helix.root, 'ui', 'helix.icns')))
 	window.show()
 	window.setWindowState(window.windowState() & Qt.WindowMinimized | Qt.WindowActive)
 	window.raise_()
 	window.activateWindow()
 	window.setWindowState(Qt.WindowMaximized)
+	window.setDockOptions(QMainWindow.AnimatedDocks | QMainWindow.AllowNestedDocks | QMainWindow.AllowTabbedDocks)
+	window.setTabPosition(Qt.TopDockWidgetArea | Qt.BottomDockWidgetArea | Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea, QTabWidget.North)
 	app.restoreOverrideCursor()
+
+
+	from helix.manager.thumbnail import ThumbnailViewer
+	qd = QDockWidget('Thumbnail', parent=window)
+	tv = ThumbnailViewer()
+	qd.setWidget(tv)
+	window.addDockWidget(Qt.LeftDockWidgetArea, qd)
+
+	tv.setSequence(FrameSequence('/Volumes/Macintosh MD/Users/spaouellet/Documents/HelixFiles/work/testShow/sq0100/s0100_B/plate/render/tthomp27_s0601_s1000_v017_0000971.jpeg'))
 
 	sys.exit(app.exec_())

@@ -2,7 +2,7 @@ from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 from PyQt4 import uic
 
-from helix.manager.viewer import Node
+from helix.utils.qtutils import Node
 import helix
 
 import os
@@ -170,6 +170,12 @@ class ElementViewWidget(QWidget):
 			self.elements = elements.getElements()
 
 		self.buildUI()
+
+	def asDockable(self):
+		qdock = QDockWidget('Element Viewer', self.parent())
+		qdock.setWidget(self)
+
+		return qdock
 
 	def buildUI(self):
 		self.proxyModel = ElementSortFilterProxyModel()

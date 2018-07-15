@@ -30,7 +30,9 @@ class PermissionNodes(object):
 		VIEW_SHOTS = 'helix.view.shot',
 		VIEW_ELEMENTS = 'helix.view.element',
 		DUMP_DB = 'helix.dump',
-		GET_ENV = 'helix.getenv'
+		GET_ENV = 'helix.getenv',
+		VIEW_CONFIG = 'helix.config.view',
+		EDIT_CONFIG = 'helix.config.edit'
 	)
 
 	@staticmethod
@@ -85,9 +87,11 @@ class PermissionHandler(object):
 			self.group = 'defaultgroup'
 			self.permNodes = cfg.config.get('Permissions', 'defaultgroup')
 
-	def check(self, node):
+	def check(self, node, silent=False):
 		# First check negated node, since that would override anything else
 		if '^' + node in self.permNodes:
+			if silent:
+				return False
 			raise PermissionError('You don\'t have permission to do this')
 
 		if node in self.permNodes:
@@ -99,12 +103,16 @@ class PermissionHandler(object):
 		# First check negated wildcard nodes
 		for nw in negWildcards:
 			if nw in self.permNodes:
+				if silent:
+					return False
 				raise PermissionError('You don\'t have permission to do this')
 
 		for w in wildcards:
 			if w in self.permNodes:
 				return True
 
+		if silent:
+			return False
 		raise PermissionError('You don\'t have permission to do this')
 
 	def toWildcard(self, node):

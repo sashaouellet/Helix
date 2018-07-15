@@ -109,3 +109,46 @@ class FileChooserLayout(QHBoxLayout):
 		if file and os.path.exists(file):
 			self.LNE_selection.setText(file)
 			self.fileChosenSignal.emit(file)
+
+class Node(object):
+	def __init__(self, data=None):
+		self._data = data
+
+		if type(data) == tuple:
+			self._data = list(data)
+
+		if type(data) in (str, unicode) or not hasattr(data, '__getitem__'):
+			self._data = [data]
+
+		self._colCount = len(self._data)
+		self._children = []
+		self._parent = None
+		self._row = 0
+
+	def data(self, col):
+		if col >= 0 and col < len(self._data):
+			return self._data[col]
+
+	def columnCount(self):
+		return self._colCount
+
+	def childCount(self):
+		return len(self._children)
+
+	def child(self, row):
+		if row >= 0 and row < self.childCount():
+			return self._children[row]
+
+	def parent(self):
+		return self._parent
+
+	def row(self):
+		return self._row
+
+	def addChild(self, child):
+		child._parent = self
+		child._row = len(self._children)
+		self._children.append(child)
+		self._colCount = max(child.columnCount(), self._colCount)
+
+		return child
