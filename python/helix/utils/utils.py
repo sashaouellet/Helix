@@ -20,8 +20,3 @@ def utcToLocal(utcDT):
 	assert utcDT.resolution >= timedelta(microseconds=1)
 
 	return localDT.replace(microsecond=utcDT.microsecond)
-
-dt = datetime.now()
-
-print dt
-print utcToLocal(dt)

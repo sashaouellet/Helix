@@ -28,10 +28,15 @@ def getAllEnv():
 
 	return ret
 
-def getCreationInfo():
+def getCreationInfo(format=True):
 	import getpass, datetime
 
-	return (getpass.getuser(), datetime.datetime.now().strftime(DATE_FORMAT))
+	dt = datetime.datetime.now()
+
+	if format:
+		dt = dt.strftime(DATE_FORMAT)
+
+	return (getpass.getuser(), dt)
 
 def getConfig():
 	from helix.environment.config import GeneralConfigHandler

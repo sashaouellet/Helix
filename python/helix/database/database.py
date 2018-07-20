@@ -14,6 +14,8 @@ import helix.utils.fileutils as fileutils
 from helix.utils.diff import DiffSet, STATE_ADD
 from helix.api.exceptions import *
 from helix.utils.fileclassification import FrameSequence, Frame
+import sqlite3
+import hashlib
 
 class Database(object):
 	"""Represents a collection of shows on disk
@@ -306,14 +308,85 @@ class DatabaseObject(object):
 	for decoding operations to be simplified. This allows for a particular JSON object on disk to be easily
 	indentified and then properly constructed given the rest of its data structure.
 	"""
+	def get(self, attr, pk, default=None):
+		from helix.database.sql import Manager
 
-	def __init__(self, *args, **kwargs):
-		data = kwargs.pop('data', {})
-		self._data = copy.deepcopy(data)
-		self._data['_DBOType'] = self._data.get('_DBOType', self.__class__.__name__)
+		with Manager(willCommit=False) as mgr:
+			try:
+				return mgr.connection().execute('SELECT {} FROM {} WHERE {}="{}"'.format(attr, self.table, pk, getattr(self, pk, None))).fetchone()[0]
+			except sqlite3.OperationalError as e:
+				print 'No such attribute: {}, defaulting to {}'.format(attr, default)
+				return default
 
-		for key, val in kwargs.iteritems():
-			self._data[key] = val
+	def insert(self):
+		from helix.database.sql import Manager
+		with Manager() as mgr:
+			self._exists = mgr._insert(self.table, self)
+
+	def exists(self, primaryKey, fetch=False):
+		from helix.database.sql import Manager
+
+		with Manager(willCommit=False) as mgr:
+			try:
+				rows = mgr.connection().execute('SELECT * FROM {} WHERE {}="{}"'.format(self.table, primaryKey, getattr(self, primaryKey, None))).fetchall()
+
+				if fetch:
+					return rows[0] if rows else None
+				else:
+					return len(rows) > 0
+			except sqlite3.OperationalError as e:
+				print e
+				if fetch:
+					return None
+				else:
+					return False
+
+	def _id(self, token=''):
+		# It's useless to call this on a subclass that hasn't
+		# overwritten this method.. which is fine, not all of them
+		# need to have an id.
+		return hashlib.md5(token).hexdigest()
+
+	@property
+	def pk(self):
+		raise NotImplementedError()
+
+	def map(self):
+		from helix.database.sql import Manager
+
+		with Manager(willCommit=False) as mgr:
+			values = ()
+
+			for c, notNull in mgr.getColumnNames(self.table):
+				val = getattr(self, c, None)
+
+				if val is None and notNull:
+					raise ValueError('{} for {} cannot be null'.format(c, type(self).__name__))
+
+				values += (val, )
+
+			return values
+
+	def unmap(self, values):
+		from helix.database.sql import Manager
+
+		with Manager(willCommit=False) as mgr:
+			for col, val in zip([c[0] for c in mgr.getColumnNames(self.table)], list(values)):
+				try:
+					setattr(self, col, val)
+				except:
+					# Gross, but for private variables we are
+					# probably calculating them a different way anyway
+					# when we retrieve them later
+					pass
+
+	def addUserIfMissing(self, user):
+		from helix.database.sql import Manager
+
+		with Manager() as mgr:
+			if not user.exists():
+				print 'User {} doesn\'t exist, creating'.format(user.username)
+				mgr.insert(user.table, user)
 
 	def set(self, key, val, checkKey=False):
 		"""Sets the given key to the given value. If the key doesn't exist, and checkKey is True then
@@ -335,18 +408,19 @@ class DatabaseObject(object):
 
 		self._data[key] = val
 
-	def get(self, key, default=None):
-		"""Gets the value of the given key from this object, defaulti
-		to the value specified by default if the key does not exist.
+	# def get(self, key, default=None):
+	# 	"""Gets the value of the given key from this object, defaulti
+	# 	to the value specified by default if the key does not exist.
 
-		Args:
-		    key (str): The key to obtain the value of
-		    default (None, optional): The default value to return if the given key does not exist
+	# 	Args:
+	# 	    key (str): The key to obtain the value of
+	# 	    default (None, optional): The default value to return if the given key does not exist
 
-		Returns:
-		    any: The value of the given key
-		"""
-		return self._data.get(key, default)
+	# 	Returns:
+	# 	    any: The value of the given key
+	# 	"""
+
+	# 	return self._data.get(key, default)
 
 	def translateTable(self):
 		pass
@@ -659,289 +733,289 @@ class ElementContainer(DatabaseObject):
 
 		return diffs
 
-class Show(ElementContainer):
+# class Show(ElementContainer):
 
-	"""Represent a show, which houses a collection of database.Sequence as well as other show-specific parameters
+# 	"""Represent a show, which houses a collection of database.Sequence as well as other show-specific parameters
 
-	The Show data table is converted into a sequence number-->sequence convenience table in order for faster sequence
-	lookups.
-	"""
+# 	The Show data table is converted into a sequence number-->sequence convenience table in order for faster sequence
+# 	lookups.
+# 	"""
 
-	def __init__(self, *args, **kwargs):
-		super(Show, self).__init__(*args, **kwargs)
+# 	def __init__(self, *args, **kwargs):
+# 		super(Show, self).__init__(*args, **kwargs)
 
-		self._seqTable = {}
-		seqs = self._data.get('sequences', [])
+# 		self._seqTable = {}
+# 		seqs = self._data.get('sequences', [])
 
-		for seq in seqs:
-			num = int(seq.get('num'))
+# 		for seq in seqs:
+# 			num = int(seq.get('num'))
 
-			self._seqTable[num] = seq
+# 			self._seqTable[num] = seq
 
-	def translateTable(self):
-		"""Translates the lookup tables back into the standard data table so that it can be encoded to JSON
-		"""
-		self._data['sequences'] = self._seqTable.values()
+# 	def translateTable(self):
+# 		"""Translates the lookup tables back into the standard data table so that it can be encoded to JSON
+# 		"""
+# 		self._data['sequences'] = self._seqTable.values()
 
-		super(Show, self).translateTable()
+# 		super(Show, self).translateTable()
 
-	def getDiskLocation(self, workDir=True):
-		baseDir = env.getEnvironment('work') if workDir else env.getEnvironment('release')
-		showDir = self.get('dirName')
+# 	def getDiskLocation(self, workDir=True):
+# 		baseDir = env.getEnvironment('work') if workDir else env.getEnvironment('release')
+# 		showDir = self.get('dirName')
 
-		return os.path.join(baseDir, showDir)
+# 		return os.path.join(baseDir, showDir)
 
-	def addSequence(self, seq, force=False):
-		"""Adds the given database.Sequence to the sequence table.
+# 	def addSequence(self, seq, force=False):
+# 		"""Adds the given database.Sequence to the sequence table.
 
-		Args:
-		    seq (database.Sequence): The sequence to add
-		    force (bool, optional): By default, an existing sequence will not be overridden. If force is True,
-		    	an existing sequence will be replaced by the given one.
+# 		Args:
+# 		    seq (database.Sequence): The sequence to add
+# 		    force (bool, optional): By default, an existing sequence will not be overridden. If force is True,
+# 		    	an existing sequence will be replaced by the given one.
 
-		Returns:
-			bool: Whether the sequence was successfully added or not
-		"""
-		num = seq.get('num')
+# 		Returns:
+# 			bool: Whether the sequence was successfully added or not
+# 		"""
+# 		num = seq.get('num')
 
-		if num not in self._seqTable or force:
-			self._seqTable[num] = seq
-		else:
-			raise DatabaseError('Sequence {} already exists in database'.format(num))
+# 		if num not in self._seqTable or force:
+# 			self._seqTable[num] = seq
+# 		else:
+# 			raise DatabaseError('Sequence {} already exists in database'.format(num))
 
-	def removeSequence(self, seqNum, clean=False):
-		"""Removes the sequence with the given number from this show, if it exists.
+# 	def removeSequence(self, seqNum, clean=False):
+# 		"""Removes the sequence with the given number from this show, if it exists.
 
-		Args:
-		    seqNum (int | str): The number of the sequence to remove
-		    clean (bool, optional): Whether or not to remove the files associated with this show from disk
+# 		Args:
+# 		    seqNum (int | str): The number of the sequence to remove
+# 		    clean (bool, optional): Whether or not to remove the files associated with this show from disk
 
-		Returns:
-		    database.Sequence: The removed sequence (if it existed), otherwise None
-		"""
-		work = self.getSequenceDir(seqNum)
-		release = self.getSequenceDir(seqNum, work=False)
-		seq = self._seqTable.pop(int(seqNum), None)
+# 		Returns:
+# 		    database.Sequence: The removed sequence (if it existed), otherwise None
+# 		"""
+# 		work = self.getSequenceDir(seqNum)
+# 		release = self.getSequenceDir(seqNum, work=False)
+# 		seq = self._seqTable.pop(int(seqNum), None)
 
-		if seq and clean:
-			if os.path.exists(work):
-				shutil.rmtree(work)
+# 		if seq and clean:
+# 			if os.path.exists(work):
+# 				shutil.rmtree(work)
 
-			if os.path.exists(release):
-				shutil.rmtree(release)
+# 			if os.path.exists(release):
+# 				shutil.rmtree(release)
 
-		return seq
+# 		return seq
 
-	def getSequence(self, num):
-		"""Gets the sequence from the table from the specified sequence number.
+# 	def getSequence(self, num):
+# 		"""Gets the sequence from the table from the specified sequence number.
 
-		Args:
-		    num (int): The number of the sequence to retrieve
-
-		Returns:
-		    database.Sequence: The sequence with the given number
-
-		Raises:
-		    DatabaseError: If the given sequence number does not correlate to an existing sequence in
-		    	this show.
-		"""
-		try:
-			return self._seqTable[int(num)]
-		except KeyError:
-			print 'Sequence {} does not exist for {}'.format(num, self.get('name'))
-			raise DatabaseError
-
-	def getSequences(self):
-		"""Gets all sequences from the sequence table
-
-		Returns:
-		    list: All the sequences this show owns
-		"""
-		return self._seqTable.values()
-
-	def getShot(self, seqNum, shotNum):
-		"""Convenience function for getting a specific shot from a specific sequence in this show.
-
-		Args:
-		    seqNum (int): The sequence number to get the specified shot from
-		    shotNum (int): The shot number to retrieve
-
-		Returns:
-		    tuple: A tuple of the sequence with the given number and the shot with the given number
-		"""
-		seq = self.getSequence(seqNum)
-		shot = seq.getShot(shotNum) if shotNum else None
-
-		return (seq, shot)
-
-	def getAllElements(self, elFilter=None):
-		els = self.getElements()
-
-		for seq in self.getSequences():
-			els.extend(seq.getElements())
-
-			for shot in seq.getShots():
-				els.extend(shot.getElements())
-
-		if elFilter:
-			els = [e for e in els if elFilter(e)]
-
-		return els
-
-	def getElement(self, elementType, elementName, seqNum=None, shotNum=None):
-		"""Gets the specified element type and name from the show. If a sequence and/or shot number are specified,
-		will attempt to retrieve the overridden element from that sequence/shot (if it exists). If no override is found,
-		will just return the show-level element.
-
-		Args:
-		    elementType (str): The type that this element to retrieve is (i.e. "prop", "character")
-		    elementName (str): The element's name to retrieve
-		    seqNum (int, optional): The sequence number to get the specified element from. By default assumes the global (show-level) element
-		    shotNum (int, optional): The shot number to retrieve the specified element from. By default assumes the global (show-level) element
-
-		Returns:
-		    database.Element: The element that matches all the given parameters
-
-		Raises:
-		    DatabaseError: If the given elementType does not match any known element type.
-		"""
-
-		if elementType not in Element.ELEMENT_TYPES:
-			print 'Element type specified ({}) does not exist'.format(elementType)
-			print 'Must be one of: {}'.format(', '.join(Element.ELEMENT_TYPES))
-			raise DatabaseError
-
-		showElement = self._elementTable[elementType].get(elementName)
-
-		if seqNum and shotNum:
-			try:
-				_, shot = self.getShot(seqNum, shotNum)
-				shotEl = shot.getElement(elementType, elementName)
-
-				if shotEl:
-					return shotEl
-				else:
-					print 'No such element in sequence {} shot {}'.format(seqNum, shotNum)
-					print 'Defaulting to show-level element'
-					return showElement
-			except DatabaseError:
-				print 'Defaulting to show-level element'
-				return showElement
-		elif seqNum:
-			try:
-				seq = self.getSequence(seqNum)
-				seqEl = seq.getElement(elementType, elementName)
-
-				if seqEl:
-					return seqEl
-				else:
-					print 'No such element in sequence {}'.format(seqNum)
-					print 'Defaulting to show-level element'
-					return showElement
-			except DatabaseError:
-				print 'Defaulting to show-level element'
-				return showElement
-
-		return showElement
-
-	def getSafeName(self):
-		"""Constructs the "safe name" for this show, based on its actual name. The safe name
-		is free of special characters and spaces so that directories can be safely made using it.
-
-		Returns:
-		    str: The transformed name
-		"""
-		return fileutils.sanitize(fileutils.convertToCamelCase(self.get('name')))
-
-	def getSequenceDir(self, seqNum, work=True):
-		baseDir = env.getEnvironment('work') if work else env.getEnvironment('release')
-		seq = self.getSequence(seqNum)
-
-		return os.path.join(baseDir, self.get('dirName'), seq.getDirectoryName())
-
-	def getShotDir(self, seqNum, shotNum, work=True):
-		baseDir = env.getEnvironment('work') if work else env.getEnvironment('release')
-		seq, shot = self.getShot(seqNum, shotNum)
-
-		return os.path.join(baseDir, self.get('dirName'), seq.getDirectoryName(), shot.getDirectoryName())
-
-	def diff(self, other, path=[]):
-		diffs = DiffSet()
-
-		if type(self) != type(other):
-			raise ValueError('Can only perform diff between objects of the same type')
-
-		self.translateTable()
-		other.translateTable()
-
-		path.append(self.get('name'))
-
-		# First check our data dict keys to see if they:
-		# 1. Exist in "other"'s data dict
-		# 2. Match in value to "other"
-		for key, val in self._data.iteritems():
-			if key in ('sequences', 'elements'): # Skip for now
-				continue
-
-			otherVal = other._data.get(key)
-
-			if isinstance(val, list) and isinstance(otherVal, list):
-				path.append(key)
-
-				valTuple, otherValTuple = zip(*list(itertools.izip_longest(val, otherVal, fillvalue=None)))
-
-				for v, ov in zip(valTuple, otherValTuple):
-					if v != ov:
-						diffs.add(path, valTuple.index(v), val, otherVal, v, ov)
-
-				path.pop()
-			else:
-				if isinstance(otherVal, unicode):
-					otherVal = str(otherVal)
-				if isinstance(val, unicode):
-					val = str(val)
-				if otherVal != val:
-					diffs.add(path, key, self._data, other._data, val, otherVal)
-
-		# Do the same for other dict, but ignore keys that exist in
-		# the current data dict since we already added those differences
-		# in the last iteration. We just want keys in "other" that don't exist
-		# anymore in the current data dict.
-		for key, val in other._data.iteritems():
-			if key in ('sequences', 'elements'): # Skip for now
-				continue
-
-			if key not in self._data:
-				diffs.add(path, key, self._data, other._data, None, val)
-
-		if self._seqTable.keys() or other._seqTable.keys():
-			selfSeq, otherSeq = zip(*list(itertools.izip_longest(self._seqTable.keys(), other._seqTable.keys(), fillvalue=None)))
-
-			for seq, oSeq in zip(selfSeq, otherSeq):
-				path.append('sequences')
-
-				if seq:
-					if seq not in other._seqTable.keys():
-						diffs.add(path, seq, self._seqTable, other._seqTable, self._seqTable.get(seq), None)
-					else:
-						diffs.merge(self._seqTable.get(seq).diff(other._seqTable.get(seq), path))
-				if oSeq:
-					if oSeq not in self._seqTable.keys():
-						diffs.add(path, oSeq, self._seqTable, other._seqTable, None, other._seqTable.get(oSeq))
-					else:
-						pass
-						#diffs.merge(self._seqTable.get(seq).diff(other._seqTable.get(seq)))
-
-				path.pop()
-
-		diffs.merge(ElementContainer.diff(self, other, path))
-
-		path.pop()
-
-		return diffs
-
-	def __repr__(self):
-		return '{} ({})'.format(self.get('name', 'undefined'), ', '.join(self.get('aliases', [])))
+# 		Args:
+# 		    num (int): The number of the sequence to retrieve
+
+# 		Returns:
+# 		    database.Sequence: The sequence with the given number
+
+# 		Raises:
+# 		    DatabaseError: If the given sequence number does not correlate to an existing sequence in
+# 		    	this show.
+# 		"""
+# 		try:
+# 			return self._seqTable[int(num)]
+# 		except KeyError:
+# 			print 'Sequence {} does not exist for {}'.format(num, self.get('name'))
+# 			raise DatabaseError
+
+# 	def getSequences(self):
+# 		"""Gets all sequences from the sequence table
+
+# 		Returns:
+# 		    list: All the sequences this show owns
+# 		"""
+# 		return self._seqTable.values()
+
+# 	def getShot(self, seqNum, shotNum):
+# 		"""Convenience function for getting a specific shot from a specific sequence in this show.
+
+# 		Args:
+# 		    seqNum (int): The sequence number to get the specified shot from
+# 		    shotNum (int): The shot number to retrieve
+
+# 		Returns:
+# 		    tuple: A tuple of the sequence with the given number and the shot with the given number
+# 		"""
+# 		seq = self.getSequence(seqNum)
+# 		shot = seq.getShot(shotNum) if shotNum else None
+
+# 		return (seq, shot)
+
+# 	def getAllElements(self, elFilter=None):
+# 		els = self.getElements()
+
+# 		for seq in self.getSequences():
+# 			els.extend(seq.getElements())
+
+# 			for shot in seq.getShots():
+# 				els.extend(shot.getElements())
+
+# 		if elFilter:
+# 			els = [e for e in els if elFilter(e)]
+
+# 		return els
+
+# 	def getElement(self, elementType, elementName, seqNum=None, shotNum=None):
+# 		"""Gets the specified element type and name from the show. If a sequence and/or shot number are specified,
+# 		will attempt to retrieve the overridden element from that sequence/shot (if it exists). If no override is found,
+# 		will just return the show-level element.
+
+# 		Args:
+# 		    elementType (str): The type that this element to retrieve is (i.e. "prop", "character")
+# 		    elementName (str): The element's name to retrieve
+# 		    seqNum (int, optional): The sequence number to get the specified element from. By default assumes the global (show-level) element
+# 		    shotNum (int, optional): The shot number to retrieve the specified element from. By default assumes the global (show-level) element
+
+# 		Returns:
+# 		    database.Element: The element that matches all the given parameters
+
+# 		Raises:
+# 		    DatabaseError: If the given elementType does not match any known element type.
+# 		"""
+
+# 		if elementType not in Element.ELEMENT_TYPES:
+# 			print 'Element type specified ({}) does not exist'.format(elementType)
+# 			print 'Must be one of: {}'.format(', '.join(Element.ELEMENT_TYPES))
+# 			raise DatabaseError
+
+# 		showElement = self._elementTable[elementType].get(elementName)
+
+# 		if seqNum and shotNum:
+# 			try:
+# 				_, shot = self.getShot(seqNum, shotNum)
+# 				shotEl = shot.getElement(elementType, elementName)
+
+# 				if shotEl:
+# 					return shotEl
+# 				else:
+# 					print 'No such element in sequence {} shot {}'.format(seqNum, shotNum)
+# 					print 'Defaulting to show-level element'
+# 					return showElement
+# 			except DatabaseError:
+# 				print 'Defaulting to show-level element'
+# 				return showElement
+# 		elif seqNum:
+# 			try:
+# 				seq = self.getSequence(seqNum)
+# 				seqEl = seq.getElement(elementType, elementName)
+
+# 				if seqEl:
+# 					return seqEl
+# 				else:
+# 					print 'No such element in sequence {}'.format(seqNum)
+# 					print 'Defaulting to show-level element'
+# 					return showElement
+# 			except DatabaseError:
+# 				print 'Defaulting to show-level element'
+# 				return showElement
+
+# 		return showElement
+
+# 	def getSafeName(self):
+# 		"""Constructs the "safe name" for this show, based on its actual name. The safe name
+# 		is free of special characters and spaces so that directories can be safely made using it.
+
+# 		Returns:
+# 		    str: The transformed name
+# 		"""
+# 		return fileutils.sanitize(fileutils.convertToCamelCase(self.get('name')))
+
+# 	def getSequenceDir(self, seqNum, work=True):
+# 		baseDir = env.getEnvironment('work') if work else env.getEnvironment('release')
+# 		seq = self.getSequence(seqNum)
+
+# 		return os.path.join(baseDir, self.get('dirName'), seq.getDirectoryName())
+
+# 	def getShotDir(self, seqNum, shotNum, work=True):
+# 		baseDir = env.getEnvironment('work') if work else env.getEnvironment('release')
+# 		seq, shot = self.getShot(seqNum, shotNum)
+
+# 		return os.path.join(baseDir, self.get('dirName'), seq.getDirectoryName(), shot.getDirectoryName())
+
+# 	def diff(self, other, path=[]):
+# 		diffs = DiffSet()
+
+# 		if type(self) != type(other):
+# 			raise ValueError('Can only perform diff between objects of the same type')
+
+# 		self.translateTable()
+# 		other.translateTable()
+
+# 		path.append(self.get('name'))
+
+# 		# First check our data dict keys to see if they:
+# 		# 1. Exist in "other"'s data dict
+# 		# 2. Match in value to "other"
+# 		for key, val in self._data.iteritems():
+# 			if key in ('sequences', 'elements'): # Skip for now
+# 				continue
+
+# 			otherVal = other._data.get(key)
+
+# 			if isinstance(val, list) and isinstance(otherVal, list):
+# 				path.append(key)
+
+# 				valTuple, otherValTuple = zip(*list(itertools.izip_longest(val, otherVal, fillvalue=None)))
+
+# 				for v, ov in zip(valTuple, otherValTuple):
+# 					if v != ov:
+# 						diffs.add(path, valTuple.index(v), val, otherVal, v, ov)
+
+# 				path.pop()
+# 			else:
+# 				if isinstance(otherVal, unicode):
+# 					otherVal = str(otherVal)
+# 				if isinstance(val, unicode):
+# 					val = str(val)
+# 				if otherVal != val:
+# 					diffs.add(path, key, self._data, other._data, val, otherVal)
+
+# 		# Do the same for other dict, but ignore keys that exist in
+# 		# the current data dict since we already added those differences
+# 		# in the last iteration. We just want keys in "other" that don't exist
+# 		# anymore in the current data dict.
+# 		for key, val in other._data.iteritems():
+# 			if key in ('sequences', 'elements'): # Skip for now
+# 				continue
+
+# 			if key not in self._data:
+# 				diffs.add(path, key, self._data, other._data, None, val)
+
+# 		if self._seqTable.keys() or other._seqTable.keys():
+# 			selfSeq, otherSeq = zip(*list(itertools.izip_longest(self._seqTable.keys(), other._seqTable.keys(), fillvalue=None)))
+
+# 			for seq, oSeq in zip(selfSeq, otherSeq):
+# 				path.append('sequences')
+
+# 				if seq:
+# 					if seq not in other._seqTable.keys():
+# 						diffs.add(path, seq, self._seqTable, other._seqTable, self._seqTable.get(seq), None)
+# 					else:
+# 						diffs.merge(self._seqTable.get(seq).diff(other._seqTable.get(seq), path))
+# 				if oSeq:
+# 					if oSeq not in self._seqTable.keys():
+# 						diffs.add(path, oSeq, self._seqTable, other._seqTable, None, other._seqTable.get(oSeq))
+# 					else:
+# 						pass
+# 						#diffs.merge(self._seqTable.get(seq).diff(other._seqTable.get(seq)))
+
+# 				path.pop()
+
+# 		diffs.merge(ElementContainer.diff(self, other, path))
+
+# 		path.pop()
+
+# 		return diffs
+
+# 	def __repr__(self):
+# 		return '{} ({})'.format(self.get('name', 'undefined'), ', '.join(self.get('aliases', [])))
 
 class Sequence(ElementContainer):
 
@@ -1331,6 +1405,30 @@ class Element(DatabaseObject):
 	CAMERA = 'camera'
 	PLATE = 'plate'
 	ELEMENT_TYPES = [SET, LIGHT, CHARACTER, PROP, TEXTURE, EFFECT, COMP, CAMERA, PLATE]
+
+	def toTuple(self):
+		eid = None
+		name = self.get('name')
+		elType = self.get('type')
+		author = self.get('author')
+		date = datetime.datetime.strptime(self.get('creation'), env.DATE_FORMAT)
+		show = 'test'
+		parent = self.get('parent')
+		sequence = None
+		shot = None
+
+		if parent:
+			s, sh = parent.split('/')
+			if s:
+				sequence = int(s)
+
+			if sh:
+				shot = int(sh)
+
+		pubVersion = self.get('pubVersion', 0)
+		version = self.get('version', 1)
+
+		return (eid, name, elType, author, date, show, sequence, shot, pubVersion, version)
 
 	def getPublishedFile(self, version):
 		"""Given a version (either number or PublishedFile object), returns the
