@@ -54,17 +54,13 @@ class Manager(object):
 			self.conn.execute('INSERT INTO {} VALUES({})'.format(table, valuesString), values)
 			return True
 		except sqlite3.IntegrityError as e:
-			if isinstance(obj, DatabaseObject):
-				print '{} ({}) already exists'.format(type(obj).__name__, getattr(obj, obj.pk))
-			else:
-				print '{} already exists'.format(values)
-
+			print str(e)
 			return False
 
 	def initTables(self):
 		self.conn.execute(
 		'''
-			CREATE TABLE 'people' (
+			CREATE TABLE IF NOT EXISTS 'people' (
 				'username'		VARCHAR(10) NOT NULL UNIQUE,
 				'full_name'		TEXT,
 				'department'	TEXT,
@@ -74,7 +70,7 @@ class Manager(object):
 		)
 		self.conn.execute(
 		'''
-			CREATE TABLE 'shows' (
+			CREATE TABLE IF NOT EXISTS 'shows' (
 				'alias'			VARCHAR(10) NOT NULL UNIQUE,
 				'name'			TEXT,
 				'work_path'		TEXT NOT NULL,
@@ -88,7 +84,7 @@ class Manager(object):
 		)
 		self.conn.execute(
 		'''
-			CREATE TABLE 'sequences' (
+			CREATE TABLE IF NOT EXISTS 'sequences' (
 				'id'			VARCHAR(32) PRIMARY KEY NOT NULL UNIQUE,
 				'num'			INTEGER NOT NULL,
 				'show'			VARCHAR(10) NOT NULL,
@@ -103,14 +99,16 @@ class Manager(object):
 		)
 		self.conn.execute(
 		'''
-			CREATE TABLE 'shots' (
+			CREATE TABLE IF NOT EXISTS 'shots' (
 				'id'			VARCHAR(32) PRIMARY KEY NOT NULL UNIQUE,
 				'show'			VARCHAR(10) NOT NULL,
 				'sequence'		INTEGER NOT NULL,
+				'sequenceId'	VARCHAR(32) NOT NULL,
 				'num'			INTEGER NOT NULL,
 				'start'			INTEGER,
 				'end'			INTEGER,
 				'clipName'		TEXT,
+				'status'		TEXT NOT NULL,
 				'assigned_to'	VARCHAR(10),
 				'take'			INTEGER,
 				'thumbnail'		TEXT,
@@ -121,13 +119,13 @@ class Manager(object):
 				FOREIGN KEY('author') REFERENCES 'people'('username'),
 				FOREIGN KEY('show') REFERENCES 'shows'('alias'),
 				FOREIGN KEY('assigned_to') REFERENCES 'people'('username'),
-				FOREIGN KEY('sequence') REFERENCES 'sequences'('id')
+				FOREIGN KEY('sequenceId') REFERENCES 'sequences'('id')
 			)
 		'''
 		)
 		self.conn.execute(
 		'''
-			CREATE TABLE 'elements' (
+			CREATE TABLE IF NOT EXISTS 'elements' (
 				'id'			VARCHAR(32) PRIMARY KEY NOT NULL UNIQUE,
 				'name'			TEXT NOT NULL,
 				'type'			TEXT NOT NULL,
@@ -135,24 +133,26 @@ class Manager(object):
 				'creation'		DATE NOT NULL,
 				'show'			VARCHAR(10) NOT NULL,
 				'sequence'		INTEGER,
+				'sequenceId'	VARCHAR(32),
 				'shot'			INTEGER,
+				'shotId'		VARCHAR(32),
 				'work_path'		TEXT NOT NULL,
 				'release_path'	TEXT NOT NULL,
-				'status'		TEXT,
+				'status'		TEXT NOT NULL,
 				'assigned_to'	TEXT,
 				'pubVersion'	INTEGER,
 				'version'		INTEGER,
 				'thumbnail'		TEXT,
 				FOREIGN KEY('show') REFERENCES 'shows'('alias'),
 				FOREIGN KEY('author') REFERENCES 'people'('username'),
-				FOREIGN KEY('shot') REFERENCES 'shots'('id'),
-				FOREIGN KEY('sequence') REFERENCES 'sequences'('id')
+				FOREIGN KEY('shotId') REFERENCES 'shots'('id'),
+				FOREIGN KEY('sequenceId') REFERENCES 'sequences'('id')
 			)
 		'''
 		)
 		self.conn.execute(
 		'''
-			CREATE TABLE 'fixes' (
+			CREATE TABLE IF NOT EXISTS 'fixes' (
 				'id'			VARCHAR(32) PRIMARY KEY NOT NULL UNIQUE,
 				'num'			INTEGER NOT NULL,
 				'author'		VARCHAR(10) NOT NULL,
@@ -160,57 +160,63 @@ class Manager(object):
 				'fixer'			VARCHAR(10),
 				'fix_date'		DATE,
 				'deadline'		DATE,
-				'status'		TEXT,
+				'status'		TEXT NOT NULL,
 				'priority'		INTEGER,
+				'title'			TEXT NOT NULL,
 				'body'			TEXT NOT NULL,
 				'assign_date'	DATE,
 				'show'			VARCHAR(10) NOT NULL,
 				'sequence'		INTEGER,
+				'sequenceId'	VARCHAR(32),
 				'shot'			INTEGER,
-				'element'		INTEGER,
+				'shotId'		VARCHAR(32),
+				'elementId'		VARCHAR(32),
 				FOREIGN KEY('author') REFERENCES 'people'('username'),
 				FOREIGN KEY('fixer') REFERENCES 'people'('username'),
 				FOREIGN KEY('show') REFERENCES 'shows'('alias'),
-				FOREIGN KEY('sequence') REFERENCES 'sequences'('id'),
-				FOREIGN KEY('shot') REFERENCES 'shots'('id')
+				FOREIGN KEY('sequenceId') REFERENCES 'sequences'('id'),
+				FOREIGN KEY('shotId') REFERENCES 'shots'('id'),
+				FOREIGN KEY('elementId') REFERENCES 'elements'('id')
 			)
 		'''
 		)
 		self.conn.execute(
 		'''
-			CREATE TABLE 'publishedFiles' (
+			CREATE TABLE IF NOT EXISTS 'publishedFiles' (
 				'id'		VARCHAR(32) PRIMARY KEY NOT NULL UNIQUE,
 				'version'	INTEGER NOT NULL,
 				'author'	VARCHAR(10) NOT NULL,
 				'creation'	DATE NOT NULL,
 				'comment'	TEXT,
 				'file_path'	TEXT NOT NULL,
-				'element'	INTEGER NOT NULL,
+				'elementId'	VARCHAR(32) NOT NULL,
 				'fix'		INTEGER,
 				FOREIGN KEY('author') REFERENCES 'people'('username'),
-				FOREIGN KEY('element') REFERENCES 'elements'('id')
+				FOREIGN KEY('elementId') REFERENCES 'elements'('id')
 				FOREIGN KEY('fix') REFERENCES 'fixes'('id')
 			)
 		'''
 		)
 		self.conn.execute(
 		'''
-			CREATE TABLE 'takes' (
+			CREATE TABLE IF NOT EXISTS 'takes' (
 				'id'			VARCHAR(32) PRIMARY KEY NOT NULL UNIQUE,
 				'num'			INTEGER NOT NULL,
 				'author'		VARCHAR(10) NOT NULL,
 				'creation'		DATE NOT NULL,
 				'show'			VARCHAR(10) NOT NULL,
 				'sequence'		INTEGER NOT NULL,
+				'sequenceId'	VARCHAR(32) NOT NULL,
 				'shot'			INTEGER NOT NULL,
+				'shotId'		VARCHAR(32) NOT NULL,
 				'comment'		TEXT,
 				'first_frame'	INTEGER,
 				'last_frame'	INTEGER,
 				'file_path'		TEXT NOT NULL,
 				FOREIGN KEY('author') REFERENCES 'people'('username'),
-				FOREIGN KEY('sequence') REFERENCES 'sequences'('id'),
 				FOREIGN KEY('show') REFERENCES 'shows'('alias'),
-				FOREIGN KEY('shot') REFERENCES 'shots'('id')
+				FOREIGN KEY('sequenceId') REFERENCES 'sequences'('id'),
+				FOREIGN KEY('shotId') REFERENCES 'shots'('id')
 			)
 		'''
 		)
@@ -220,5 +226,6 @@ class Manager(object):
 			try:
 				self.conn.execute('DROP TABLE {}'.format(t))
 			except sqlite3.OperationalError as e:
-				print e
+				import traceback
+				print traceback.format_exc(e)
 				continue

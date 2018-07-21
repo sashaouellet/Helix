@@ -308,27 +308,43 @@ class DatabaseObject(object):
 	for decoding operations to be simplified. This allows for a particular JSON object on disk to be easily
 	indentified and then properly constructed given the rest of its data structure.
 	"""
-	def get(self, attr, pk, default=None):
+	def get(self, attr, default=None):
 		from helix.database.sql import Manager
-
 		with Manager(willCommit=False) as mgr:
 			try:
-				return mgr.connection().execute('SELECT {} FROM {} WHERE {}="{}"'.format(attr, self.table, pk, getattr(self, pk, None))).fetchone()[0]
+				return mgr.connection().execute('SELECT {} FROM {} WHERE {}="{}"'.format(attr, self.table, self.pk, getattr(self, self.pk, None))).fetchone()[0]
 			except sqlite3.OperationalError as e:
 				print 'No such attribute: {}, defaulting to {}'.format(attr, default)
 				return default
+
+	def set(self, attr, val, insertIfMissing=False):
+		from helix.database.sql import Manager
+		with Manager() as mgr:
+			if self.exists():
+				mgr.connection().execute("UPDATE {} SET {}='{}' WHERE {}='{}'".format(self.table, attr, val, self.pk, getattr(self, self.pk)))
+			else:
+				setattr(self, attr, val)
+				if insertIfMissing:
+					self.insert()
 
 	def insert(self):
 		from helix.database.sql import Manager
 		with Manager() as mgr:
 			self._exists = mgr._insert(self.table, self)
 
-	def exists(self, primaryKey, fetch=False):
+			return self._exists
+
+	def exists(self, fetch=False):
+		# we cache the exists after construction because we either fetched
+		# it from the DB or made a new one
+		if self._exists is not None and not fetch:
+			return self._exists
+
 		from helix.database.sql import Manager
 
 		with Manager(willCommit=False) as mgr:
 			try:
-				rows = mgr.connection().execute('SELECT * FROM {} WHERE {}="{}"'.format(self.table, primaryKey, getattr(self, primaryKey, None))).fetchall()
+				rows = mgr.connection().execute('SELECT * FROM {} WHERE {}="{}"'.format(self.table, self.pk, getattr(self, self.pk, None))).fetchall()
 
 				if fetch:
 					return rows[0] if rows else None
@@ -388,25 +404,25 @@ class DatabaseObject(object):
 				print 'User {} doesn\'t exist, creating'.format(user.username)
 				mgr.insert(user.table, user)
 
-	def set(self, key, val, checkKey=False):
-		"""Sets the given key to the given value. If the key doesn't exist, and checkKey is True then
-		the value will not be set. If checkKey is False, then a new key will be added with the given
-		value.
+	# def set(self, key, val, checkKey=False):
+	# 	"""Sets the given key to the given value. If the key doesn't exist, and checkKey is True then
+	# 	the value will not be set. If checkKey is False, then a new key will be added with the given
+	# 	value.
 
-		Args:
-		    key (str): The key to set
-		    val (str | int | bool | list | dict): The value to set the key to
-		    checkKey (bool, optional): If the given key doesn't exist, setting this to True will create
-		    	a new key, otherwise a DatabaseError will be raised
+	# 	Args:
+	# 	    key (str): The key to set
+	# 	    val (str | int | bool | list | dict): The value to set the key to
+	# 	    checkKey (bool, optional): If the given key doesn't exist, setting this to True will create
+	# 	    	a new key, otherwise a DatabaseError will be raised
 
-		Raises:
-		    DatabaseError: When the given key does not already exist and checkKey is set to True
-		"""
-		if checkKey and key not in self._data:
-			print 'Attribute {} doesn\'t exist'.format(key)
-			raise DatabaseError
+	# 	Raises:
+	# 	    DatabaseError: When the given key does not already exist and checkKey is set to True
+	# 	"""
+	# 	if checkKey and key not in self._data:
+	# 		print 'Attribute {} doesn\'t exist'.format(key)
+	# 		raise DatabaseError
 
-		self._data[key] = val
+	# 	self._data[key] = val
 
 	# def get(self, key, default=None):
 	# 	"""Gets the value of the given key from this object, defaulti

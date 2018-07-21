@@ -7,7 +7,7 @@ from helix.utils.fileutils import SEQUENCE_FORMAT
 
 class Sequence(DatabaseObject):
 	TABLE = 'sequences'
-	def __init__(self, num, show=env.show, author=None):
+	def __init__(self, num, show=None, author=None, makeDirs=False):
 		self.table = Sequence.TABLE
 		self.num = num
 		self.show = show if show else env.show
@@ -15,6 +15,11 @@ class Sequence(DatabaseObject):
 
 		if not num:
 			raise ValueError('Sequence\'s num can\'t be None')
+
+		try:
+			self.num = int(num)
+		except ValueError:
+			raise ValueError('Sequence number must be a number, not: {}'.format(num))
 
 		if not self.show:
 			raise ValueError('Tried to fallback to environment-set show, but it was null.')
@@ -38,6 +43,7 @@ class Sequence(DatabaseObject):
 				self.work_path = os.path.join(s.work_path, self.directory)
 				self.release_path = os.path.join(s.release_path, self.directory)
 
+		if makeDirs:
 			if not os.path.isdir(self.work_path):
 				os.makedirs(self.work_path)
 
@@ -46,15 +52,12 @@ class Sequence(DatabaseObject):
 
 	@property
 	def id(self):
-		return super(Sequence, self)._id(self.show + str(self.num))
-
-	def exists(self, fetch=False):
-		# we cache the exists after construction because we either fetched
-		# it from the DB or made a new one
-		if self._exists is not None and not fetch:
-			return self._exists
-
-		return super(Sequence, self).exists(self.pk, fetch=fetch)
+		return super(Sequence, self)._id(
+			'{}_{}'.format(
+				self.show,
+				str(self.num)
+			)
+		)
 
 	@property
 	def directory(self):
