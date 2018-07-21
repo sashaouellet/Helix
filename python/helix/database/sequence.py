@@ -2,6 +2,7 @@ import os
 
 from helix.database.database import DatabaseObject
 from helix.database.show import Show
+from helix.database.person import Person
 import helix.environment.environment as env
 from helix.utils.fileutils import SEQUENCE_FORMAT
 
@@ -42,6 +43,11 @@ class Sequence(DatabaseObject):
 			else:
 				self.work_path = os.path.join(s.work_path, self.directory)
 				self.release_path = os.path.join(s.release_path, self.directory)
+
+			p = Person(self.author)
+
+			if not p.exists():
+				raise ValueError('No such user: {}'.format(self.author))
 
 		if makeDirs:
 			if not os.path.isdir(self.work_path):

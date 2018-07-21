@@ -4,7 +4,9 @@ from helix.database.database import DatabaseObject
 from helix.database.show import Show
 from helix.database.sequence import Sequence
 from helix.database.shot import Shot
+from helix.database.person import Person
 import helix.environment.environment as env
+import helix.utils.utils as utils
 from helix.utils.fileutils import SHOT_FORMAT, SEQUENCE_FORMAT
 
 class Element(DatabaseObject):
@@ -29,12 +31,22 @@ class Element(DatabaseObject):
 
 	def __init__(self, name, elType, show=None, sequence=None, shot=None, author=None, makeDirs=False):
 		self.table = Element.TABLE
-		self.name = name # Sanitize
-		self.type = elType # Must be from list
+
+		if name:
+			sanitary, reasons = utils.isSanitary(name)
+
+			if not sanitary:
+				raise ValueError('Invalid alias specified:' + '\n'.join(reasons))
+
+		self.name = name
+		self.type = elType
 		self.show = show if show else env.show
 		self.sequence = sequence
 		self.shot = shot
 		self._exists = None
+
+		self.sequenceId = None
+		self.shotId = None
 
 		if not name:
 			if not shot or not sequence:
@@ -77,6 +89,11 @@ class Element(DatabaseObject):
 			if not s.exists():
 				raise ValueError('No such show: {}'.format(show))
 
+			p = Person(self.author)
+
+			if not p.exists():
+				raise ValueError('No such user: {}'.format(self.author))
+
 			baseWorkDir = s.work_path
 			baseReleaseDir = s.release_path
 
@@ -100,7 +117,7 @@ class Element(DatabaseObject):
 				try:
 					self.shot = int(shot)
 				except ValueError:
-					raise ValueError('Sequence number must be a number, not: {}'.format(shot))
+					raise ValueError('Shot number must be a number, not: {}'.format(shot))
 
 				sh = Shot(self.shot, self.sequence, show=self.show)
 

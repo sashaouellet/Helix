@@ -190,10 +190,12 @@ class Manager(object):
 				'comment'	TEXT,
 				'file_path'	TEXT NOT NULL,
 				'elementId'	VARCHAR(32) NOT NULL,
-				'fix'		INTEGER,
+				'fixId'		VARCHAR(32),
+				'show'		VARCHAR(10),
 				FOREIGN KEY('author') REFERENCES 'people'('username'),
 				FOREIGN KEY('elementId') REFERENCES 'elements'('id')
-				FOREIGN KEY('fix') REFERENCES 'fixes'('id')
+				FOREIGN KEY('fixId') REFERENCES 'fixes'('id')
+				FOREIGN KEY('show') REFERENCES 'shows'('alias')
 			)
 		'''
 		)
@@ -213,6 +215,7 @@ class Manager(object):
 				'first_frame'	INTEGER,
 				'last_frame'	INTEGER,
 				'file_path'		TEXT NOT NULL,
+				'thumbnail'		TEXT,
 				FOREIGN KEY('author') REFERENCES 'people'('username'),
 				FOREIGN KEY('show') REFERENCES 'shows'('alias'),
 				FOREIGN KEY('sequenceId') REFERENCES 'sequences'('id'),

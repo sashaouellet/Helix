@@ -5,6 +5,7 @@ from helix.database.show import Show
 from helix.database.sequence import Sequence
 from helix.database.shot import Shot
 from helix.database.element import Element
+from helix.database.person import Person
 import helix.environment.environment as env
 
 class Fix(DatabaseObject):
@@ -41,6 +42,10 @@ class Fix(DatabaseObject):
 		self.elementType = elementType
 		self._exists = None
 
+		self.sequenceId = None
+		self.shotId = None
+		self.elementId = None
+
 		if not title:
 			raise ValueError('Must specify a fix title')
 
@@ -57,7 +62,6 @@ class Fix(DatabaseObject):
 			self._exists = True
 		else:
 			creationInfo = env.getCreationInfo(format=False)
-
 			self.author = author if author else creationInfo[0]
 			self.creation = creationInfo[1]
 			self.status = status if status in Fix.STATUS.values() else Fix.STATUS[0]
@@ -77,6 +81,11 @@ class Fix(DatabaseObject):
 
 			if not s.exists():
 				raise ValueError('No such show: {}'.format(show))
+
+			p = Person(self.author)
+
+			if not p.exists():
+				raise ValueError('No such user: {}'.format(self.author))
 
 			if self.sequence:
 				try:
@@ -117,16 +126,17 @@ class Fix(DatabaseObject):
 							el.show
 						)
 					)
+				else:
+					self.elementId = el.id
 
 	@property
 	def id(self):
 		return super(Fix, self)._id(
-			'{}_{}_{}_{}_{}_{}_{}'.format(
+			'{}_{}_{}_{}_{}_{}'.format(
 				self.show,
 				self.sequence if self.sequence else '',
 				self.shot if self.shot else '',
-				self.elementName if self.elementName else '',
-				self.elementType if self.elementType else '',
+				self.elementId if self.elementId else '',
 				self.title,
 				self.body
 			)
@@ -152,6 +162,26 @@ class Fix(DatabaseObject):
 			).fetchone()
 
 			if res and res[0]:
-				return int(res) + 1
+				return int(res[0]) + 1
 			else:
 				return 1
+
+	@staticmethod
+	def byNum(fixNum, show=None):
+		show = show if show else env.show
+		if not show:
+			raise ValueError('Tried to fallback to environment-set show, but it was null.')
+
+		from helix.database.sql import Manager
+
+		with Manager(willCommit=False) as mgr:
+			res = mgr.connection().execute(
+				'''
+					SELECT * from {} WHERE num='{}' AND show='{}'
+				'''.format(Fix.TABLE, fixNum, show)
+			).fetchone()
+
+			if res:
+				return Fix('.', '.', show).unmap(res)
+			else:
+				return None

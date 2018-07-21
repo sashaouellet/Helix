@@ -3,6 +3,7 @@ import os
 from helix.database.database import DatabaseObject
 from helix.database.show import Show
 from helix.database.sequence import Sequence
+from helix.database.person import Person
 import helix.environment.environment as env
 from helix.utils.fileutils import SHOT_FORMAT
 
@@ -31,6 +32,8 @@ class Shot(DatabaseObject):
 		self.sequence = sequence
 		self.show = show if show else env.show
 		self._exists = None
+
+		self.sequenceId = None
 
 		if not num:
 			raise ValueError('Shot\'s num can\'t be None')
@@ -74,6 +77,11 @@ class Shot(DatabaseObject):
 
 			if not s.exists():
 				raise ValueError('No such show: {}'.format(show))
+
+			p = Person(self.author)
+
+			if not p.exists():
+				raise ValueError('No such user: {}'.format(self.author))
 
 			if not sq.exists():
 				raise ValueError('No such sequence {} in show {}'.format(sq.num, sq.show))

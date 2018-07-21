@@ -396,6 +396,8 @@ class DatabaseObject(object):
 					# when we retrieve them later
 					pass
 
+			return self
+
 	def addUserIfMissing(self, user):
 		from helix.database.sql import Manager
 
