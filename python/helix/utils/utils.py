@@ -69,7 +69,7 @@ def isSanitary(input):
 	    	reasons list is empty.
 	"""
 
-	regx = re.compile(r'^(?!^[\-_]*$|^[0-9_\-]+$)[a-zA-Z][a-zA-Z_\-0-9]+[^\W_]$')
+	regx = re.compile(r'^(?!^[\-_]*$|^[0-9_\-]+$)[a-zA-Z][a-zA-Z_\-0-9]*[^\W_]$')
 
 	if regx.match(input):
 		return (True, [])
@@ -77,6 +77,9 @@ def isSanitary(input):
 	reasons = []
 
 	# TODO: make reasons an enum
+
+	if len(input) < 2:
+		reasons.append('Must be at least 2 characters long')
 
 	if re.compile(r'[\-_\d]+').match(input[0]):
 		reasons.append('Cannot start with a dash, underscore, or number')

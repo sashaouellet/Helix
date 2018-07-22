@@ -8,11 +8,20 @@ class UtilTestCase(unittest.TestCase):
 		self.assertEqual(utils.isSanitary('foo2_bar'), (True, []))
 		self.assertEqual(utils.isSanitary('foo-bar-bar'), (True, []))
 		self.assertEqual(utils.isSanitary('foo_2_the_bar-bar'), (True, []))
+		self.assertEqual(utils.isSanitary('aa'), (True, []))
+
+		self.assertEqual(utils.isSanitary('a'),
+			(
+				False,
+				['Must be at least 2 characters long']
+			)
+		)
 
 		self.assertEqual(utils.isSanitary('2'),
 			(
 				False,
-				['Cannot start with a dash, underscore, or number']
+				['Must be at least 2 characters long',
+				 'Cannot start with a dash, underscore, or number']
 			),
 			'Starts with number'
 		)
