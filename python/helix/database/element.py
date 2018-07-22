@@ -1,4 +1,5 @@
 import os
+import shutil
 
 from helix.database.database import DatabaseObject
 from helix.database.show import Show
@@ -7,7 +8,9 @@ from helix.database.shot import Shot
 from helix.database.person import Person
 import helix.environment.environment as env
 import helix.utils.utils as utils
-from helix.utils.fileutils import SHOT_FORMAT, SEQUENCE_FORMAT
+from helix.utils.fileclassification import FrameSequence
+import helix.utils.fileutils as fileutils
+from helix.api.exceptions import PublishError
 
 class Element(DatabaseObject):
 	TABLE = 'elements'
@@ -29,14 +32,14 @@ class Element(DatabaseObject):
 	PLATE = 'plate'
 	ELEMENT_TYPES = [SET, LIGHT, CHARACTER, PROP, TEXTURE, EFFECT, COMP, CAMERA, PLATE]
 
-	def __init__(self, name, elType, show=None, sequence=None, shot=None, author=None, makeDirs=False):
+	def __init__(self, name, elType, show=None, sequence=None, shot=None, author=None, makeDirs=False, dummy=False):
 		self.table = Element.TABLE
 
 		if name:
 			sanitary, reasons = utils.isSanitary(name)
 
 			if not sanitary:
-				raise ValueError('Invalid alias specified:' + '\n'.join(reasons))
+				raise ValueError('Invalid element name specified:' + '\n'.join(reasons))
 
 		self.name = name
 		self.type = elType
@@ -48,13 +51,16 @@ class Element(DatabaseObject):
 		self.sequenceId = None
 		self.shotId = None
 
-		if not name:
+		if dummy:
+			return
+
+		if name is None:
 			if not shot or not sequence:
 				raise ValueError('Element\'s name can only be None (considered nameless) if shot and sequence are also specified')
 			else:
 				self.name = '_{}{}'.format(
-						SEQUENCE_FORMAT.format(str(self.sequence).zfill(env.SEQUENCE_SHOT_PADDING)),
-						SHOT_FORMAT.format(str(self.shot).zfill(env.SEQUENCE_SHOT_PADDING))
+						fileutils.SEQUENCE_FORMAT.format(str(self.sequence).zfill(env.SEQUENCE_SHOT_PADDING)),
+						fileutils.SHOT_FORMAT.format(str(self.shot).zfill(env.SEQUENCE_SHOT_PADDING))
 					)
 
 		if not elType:
@@ -97,7 +103,7 @@ class Element(DatabaseObject):
 			baseWorkDir = s.work_path
 			baseReleaseDir = s.release_path
 
-			if self.sequence:
+			if self.sequence is not None:
 				try:
 					self.sequence = int(self.sequence)
 				except ValueError:
@@ -113,7 +119,7 @@ class Element(DatabaseObject):
 				baseWorkDir = sq.work_path
 				baseReleaseDir = sq.release_path
 
-			if self.shot and self.sequence:
+			if self.shot is not None and self.sequence is not None:
 				try:
 					self.shot = int(shot)
 				except ValueError:
@@ -132,12 +138,245 @@ class Element(DatabaseObject):
 			self.work_path = os.path.join(baseWorkDir, self.directory)
 			self.release_path = os.path.join(baseReleaseDir, self.directory)
 
-		if makeDirs:
-			if not os.path.isdir(self.work_path):
-				os.makedirs(self.work_path)
+			if makeDirs:
+				if not os.path.isdir(self.work_path):
+					os.makedirs(self.work_path)
 
-			if not os.path.isdir(self.release_path):
-				os.makedirs(self.release_path)
+				if not os.path.isdir(self.release_path):
+					os.makedirs(self.release_path)
+
+	def rollback(self, version=None):
+		"""Switches the current version of this file to an already existing published version.
+		The on disk versionless file in the release directory has its link updated to reflect
+		this change.
+
+		If version is not specified, tries to rollback to the previous version.
+
+		Args:
+		    version (int, optional): The version to change to. If this version doesn't exist on
+				disk, or is less than 1 the rollback fails.
+
+		Returns:
+		    bool: If the rollback succeeded or not.
+		"""
+		relDir = self.release_path
+		versionsDir = os.path.join(relDir, '.versions')
+		currVersion = self.pubVersion
+		prevVersion = int(currVersion) - 1 if not version else int(version)
+
+		if currVersion == 0:
+			raise PublishError('No published records for this element.')
+
+		if prevVersion < 1:
+			raise PublishError('Cannot rollback prior to version 1. Current version found: {}'.format(currVersion))
+
+		prevPf = self.getPublishedFileByVersion(prevVersion)
+
+		if not prevPf:
+			raise PublishError('Unable to find record of PublishedFile with version: {}'.format(prevVersion))
+
+		prevFiles = prevPf.getFilePaths()
+
+		if not prevFiles:
+			# Nothing found by glob, files deleted?
+			raise PublishError('No files found for previously published version: {}'.format(prevVersion))
+
+		# Remove old versionless
+		for file in os.listdir(relDir):
+			if file != '.versions':
+				os.remove(os.path.join(relDir, file))
+
+		for path in prevFiles:
+			framePadding = fileutils.getFramePadding(os.path.split(path)[-1])
+			_, ext = os.path.splitext(path)
+			versionlessName = '{}{}{}'.format(self.get('name'), '.' + framePadding if framePadding else '', ext if not os.path.isdir(path) else '')
+			versionlessDest = os.path.join(relDir, versionlessName)
+
+			os.link(path, versionlessDest)
+
+	def versionUp(self, sourceFile, range=(), ignoreMissing=False):
+		"""Publishes the current element to the next version, copying the proper file(s) to the
+		release directory and updating the versionless file to link to this new version.
+
+		Versions are tagged in the element data with the creator and creation date for rollback purposes.
+
+		"pubVersion" reflects what version the versionless file points to, regardless of whether it is the
+		latest version or not. When a publish is executed, this is obviously updated to the version that
+		was just published.
+
+		Returns:
+		    bool: Whether the publish action succeeded or not.
+		"""
+
+		# If the source file is not an absolute path, the user probably meant it to be
+		# passed in relative to the element's work directory
+		if not os.path.isabs(sourceFile):
+			sourceFile = os.path.join(self.work_path, sourceFile)
+
+		if not os.path.exists(sourceFile):
+			raise PublishError('The given file doesn\'t exist: {}'.format(sourceFile))
+
+		versionsDir = os.path.join(self.release_path, '.versions')
+
+		if not os.path.exists(versionsDir):
+			os.makedirs(versionsDir)
+
+		sequence = FrameSequence(sourceFile, range=range)
+		isSeq = sequence.getRange() != ()
+
+		if isSeq:
+			if not sequence.isValid():
+				raise PublishError('No associated sequence found for the file given: {}'.format(sourceFile))
+
+			missing = sequence.getMissingFrames()
+
+			if missing and not ignoreMissing:
+				raise PublishError('Missing frames from sequence: {}'.format(FrameSequence.prettyPrintFrameList(missing)))
+
+			versionedSeq = self.publishFile(sequence)
+			pf = PublishedFile(self.name, self.type, versionedSeq, show=self.show, sequence=self.sequence, shot=self.shot)
+			self.set('pubVersion', pf.version)
+		else:
+			versioned = self.publishFile(sourceFile)
+			pf = PublishedFile(self.name, self.type, versioned, show=self.show, sequence=self.sequence, shot=self.shot)
+			self.set('pubVersion', pf.version)
+
+		self.set('version', self.version + 1)
+
+	def publishFile(self, fileName):
+		"""Given any arbitrary file name, determines if the file is a single file, part of a sequence, or
+		a directory and copies it accordingly to the release versions directory of the element. This also
+		sets up the hardlink(s) to the new versioned file(s).
+
+		If the incoming file name has a prefix that doesn't match the element's name, it will be
+		renamed accordingly.
+
+		Args:
+		    fileName (str): The current existing file/file from a sequence/directory to publish to the
+		    	release directory
+
+		Returns:
+		    str: The complete file path to the versioned file/file sequence/directory that was created as a result of the copy process
+		"""
+		versionsDir = os.path.join(self.release_path, '.versions')
+
+		if isinstance(fileName, FrameSequence):
+			print 'Publishing sequence...'
+			# Publishing a whole sequence
+			newSeq = fileName.copyTo(versionsDir)
+			prefix = '{}.{}'.format(self.get('name'), str(self.version).zfill(env.VERSION_PADDING))
+
+			fileName.update(prefix=self.get('name'), changeOnDisk=False)
+			fileName.setDir(self.release_path)
+
+			# Update destination file sequence to conform to the expected base name and frame padding
+			newSeq.update(prefix=prefix, padding=env.FRAME_PADDING)
+
+			# Remove old versionless
+			for file in os.listdir(self.release_path):
+				if file != '.versions':
+					os.remove(os.path.join(self.release_path, file))
+
+			# Hard link to versionless
+			for versionless, versioned in zip(fileName.getFramesAsFilePaths(), newSeq.getFramesAsFilePaths()):
+				os.link(versioned, versionless)
+
+			return newSeq.getFormatted(includeDir=True)
+		elif os.path.isdir(fileName):
+			print 'Publishing folder...'
+			# Directory publish
+			baseDirectory = os.path.split(fileName)[-1]
+			versionedName = '{}.{}'.format(self.get('name'), str(self.version).zfill(env.VERSION_PADDING))
+			versionedDest = os.path.join(versionsDir, versionedName)
+			versionlessName = self.get('name')
+			versionless = os.path.join(self.release_path, versionlessName)
+
+			# Remove old versionless
+			for file in os.listdir(self.release_path):
+				if file != '.versions':
+					os.remove(os.path.join(self.release_path, file))
+
+			shutil.copytree(fileName, versionedDest)
+			os.link(versionedDest, versionless)
+
+			return versionedDest
+		else:
+			print 'Publishing single file...'
+			# Single file publish
+			baseName, ext = os.path.splitext(fileName)
+			versionedName = '{}.{}{}'.format(self.get('name'), str(self.version).zfill(env.VERSION_PADDING), ext)
+			versionedDest = os.path.join(versionsDir, versionedName)
+			versionlessName = '{}{}'.format(self.get('name'), ext)
+			versionless = os.path.join(self.release_path, versionlessName)
+
+			# Remove old versionless
+			for file in os.listdir(self.release_path):
+				if file != '.versions':
+					os.remove(os.path.join(self.release_path, file))
+
+			shutil.copy2(fileName, versionedDest)
+			os.link(versionedDest, versionless)
+
+			return versionedDest
+
+		# # TODO: make versionless and versionDest read-only?
+
+		# #from stat import S_IREAD, S_IRGRP, S_SIROTH
+		# #os.chmod(versionDest, S_IREAD|S_IRGRP|S_SIROTH)
+		# #os.chmod(versionlessFile, S_IREAD|S_IRGRP|S_SIROTH)
+
+	def getPublishedFiles(self, authors=[]):
+		from helix.database.sql import Manager
+		from helix.database.publishedFile import PublishedFile
+
+		with Manager(willCommit=False) as mgr:
+			query = """SELECT * FROM {} WHERE show='{}' AND elementId='{}'""".format(PublishedFile.TABLE, self.show, self.id)
+
+			if authors is not None:
+				if isinstance(authors, str):
+					authors = [authors]
+				if authors:
+					query += " AND author in ({})".format(','.join(["'{}'".format(n) for n in authors]))
+
+			pfs = []
+
+			for row in mgr.connection().execute(query).fetchall():
+				pfs.append(PublishedFile.dummy().unmap(row))
+
+			return pfs
+
+	def getPublishedFileByVersion(self, version):
+		from helix.database.sql import Manager
+		from helix.database.publishedFile import PublishedFile
+
+		version = int(version)
+
+		with Manager(willCommit=False) as mgr:
+			query = """SELECT * FROM {} WHERE show='{}' AND elementId='{}' AND version='{}'""".format(PublishedFile.TABLE, self.show, self.id, version)
+
+			if authors is not None:
+				if isinstance(authors, str):
+					authors = [authors]
+				if authors:
+					query += " AND author in ({})".format(','.join(["'{}'".format(n) for n in authors]))
+
+			row = mgr.connection().execute(query).fetchone()
+
+			if row and row[0]:
+				return PublishedFile.dummy().unmap(row)
+			else:
+				return None
+
+	def clone(self, container):
+		el = container.getElement(self.name, self.type)
+
+		if el:
+			raise DatabaseError('Element already exists at the given location')
+
+		el = Element(self.name, self.type, show=container.show, sequence=container.sequence, shot=container.shot)
+		el.insert()
+
+		return el
 
 	@property
 	def id(self):
@@ -159,3 +398,7 @@ class Element(DatabaseObject):
 	@property
 	def pk(self):
 		return 'id'
+
+	@staticmethod
+	def dummy():
+		return Element('aa', Element.ELEMENT_TYPES[0])

@@ -8,13 +8,16 @@ from helix.utils.fileutils import SEQUENCE_FORMAT
 
 class Sequence(DatabaseObject):
 	TABLE = 'sequences'
-	def __init__(self, num, show=None, author=None, makeDirs=False):
+	def __init__(self, num, show=None, author=None, makeDirs=False, dummy=False):
 		self.table = Sequence.TABLE
 		self.num = num
 		self.show = show if show else env.show
 		self._exists = None
 
-		if not num:
+		if dummy:
+			return
+
+		if num is None:
 			raise ValueError('Sequence\'s num can\'t be None')
 
 		try:
@@ -49,12 +52,32 @@ class Sequence(DatabaseObject):
 			if not p.exists():
 				raise ValueError('No such user: {}'.format(self.author))
 
-		if makeDirs:
-			if not os.path.isdir(self.work_path):
-				os.makedirs(self.work_path)
+			if makeDirs:
+				if not os.path.isdir(self.work_path):
+					os.makedirs(self.work_path)
 
-			if not os.path.isdir(self.release_path):
-				os.makedirs(self.release_path)
+				if not os.path.isdir(self.release_path):
+					os.makedirs(self.release_path)
+
+	def getShots(self, nums=[]):
+		from helix.database.sql import Manager
+		from helix.database.shot import Shot
+
+		with Manager(willCommit=False) as mgr:
+			query = """SELECT * FROM {} WHERE show='{}' AND sequenceId='{}'""".format(Shot.TABLE, self.show, self.id)
+
+			if nums is not None:
+				if isinstance(nums, int):
+					nums = [nums]
+				if nums:
+					query += " AND num in ({})".format(','.join(["'{}'".format(n) for n in nums]))
+
+			shots = []
+
+			for row in mgr.connection().execute(query).fetchall():
+				shots.append(Shot.dummy().unmap(row))
+
+			return shots
 
 	@property
 	def id(self):
@@ -72,3 +95,7 @@ class Sequence(DatabaseObject):
 	@property
 	def pk(self):
 		return 'id'
+
+	@staticmethod
+	def dummy():
+		return Sequence(0, dummy=True)

@@ -31,7 +31,7 @@ class Fix(DatabaseObject):
 		10: 'Critical'
 	}
 
-	def __init__(self, title, body, show=None, sequence=None, shot=None, elementName=None, elementType=None, author=None, status=STATUS[0], priority=PRIORITY[3]):
+	def __init__(self, title, body, show=None, sequence=None, shot=None, elementName=None, elementType=None, author=None, status=STATUS[0], priority=PRIORITY[3], dummy=False):
 		self.table = Fix.TABLE
 		self.title = title
 		self.body = body
@@ -45,6 +45,9 @@ class Fix(DatabaseObject):
 		self.sequenceId = None
 		self.shotId = None
 		self.elementId = None
+
+		if dummy:
+			return
 
 		if not title:
 			raise ValueError('Must specify a fix title')
@@ -87,7 +90,7 @@ class Fix(DatabaseObject):
 			if not p.exists():
 				raise ValueError('No such user: {}'.format(self.author))
 
-			if self.sequence:
+			if self.sequence is not None:
 				try:
 					self.sequence = int(self.sequence)
 				except ValueError:
@@ -100,7 +103,7 @@ class Fix(DatabaseObject):
 				else:
 					self.sequenceId = sq.id
 
-			if self.shot and self.sequence:
+			if self.shot is not None and self.sequence is not None:
 				try:
 					self.shot = int(shot)
 				except ValueError:

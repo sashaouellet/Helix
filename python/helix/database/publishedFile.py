@@ -1,4 +1,5 @@
 import os
+import glob
 
 from helix.database.database import DatabaseObject
 import helix.environment.environment as env
@@ -6,12 +7,13 @@ from helix.database.show import Show
 from helix.database.fix import Fix
 from helix.database.element import Element
 from helix.database.person import Person
+from helix.utils.fileclassification import FrameSequence
 import helix.utils.utils as utils
 
 class PublishedFile(DatabaseObject):
 	TABLE='publishedFiles'
 
-	def __init__(self, elementName, elementType, filePath, show=None, sequence=None, shot=None, comment=None, fix=None):
+	def __init__(self, elementName, elementType, filePath, show=None, sequence=None, shot=None, comment=None, fix=None, dummy=False):
 		self.table = PublishedFile.TABLE
 		self.elementName = elementName
 		self.elementType = elementType
@@ -20,13 +22,16 @@ class PublishedFile(DatabaseObject):
 		self.fixId = None
 		self._exists = None
 
+		if dummy:
+			return
+
 		if not self.show:
 			raise ValueError('Tried to fallback to environment-set show, but it was null.')
 
 		if filePath is None:
 			raise ValueError('Must provide a file path')
 
-		if not self.elementName or not self.elementType:
+		if self.elementName is None or self.elementType is None:
 			raise ValueError('Must provide an element name and type to attach this Published File to')
 
 		e = Element(self.elementName, self.elementType, show=self.show, sequence=sequence, shot=shot)
@@ -78,6 +83,11 @@ class PublishedFile(DatabaseObject):
 				else:
 					self.fixId = f.id
 
+	def getFilePaths(self):
+		globString = FrameSequence.asGlobString(self.file_path)
+
+		return glob.glob(globString)
+
 	@property
 	def id(self):
 		return super(PublishedFile, self)._id(
@@ -107,4 +117,8 @@ class PublishedFile(DatabaseObject):
 				return int(res[0]) + 1
 			else:
 				return 1
+
+	@staticmethod
+	def dummy():
+		return PublishedFile('', '', '', dummy=True)
 

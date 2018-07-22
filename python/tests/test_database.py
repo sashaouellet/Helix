@@ -28,9 +28,28 @@ class DatabaseTestCase(unittest.TestCase):
 
 		self.assertEqual(show.get('alias'), 'foobar')
 
+		self.assertEqual(Sequence(100, 'foobar').id, show.getSequences([100])[0].id)
+		self.assertEqual(len(show.getSequences(200)), 0)
+
+		self.assertEqual(Shot(200, 900, 'foobar').id, show.getShots(900, 200)[0].id)
+		self.assertEqual(Shot(200, 900, 'foobar').id, show.getShots(900, [100, 200])[0].id)
+		self.assertEqual(len(show.getShots()), 3)
+
+		self.assertEqual(len(show.getElements()), 3)
+		self.assertEqual(Element('test', 'prop', 'foobar').id, show.getElements('test', 'prop')[0].id)
+		self.assertEqual(len(show.getElements(status='ip')), 0)
+		self.assertEqual(len(show.getElements(authors='bob')), 0)
+		self.assertEqual(len(show.getElements(authors='spaouellet')), 3)
+		self.assertEqual(len(show.getElements(assignedTo='foo')), 1)
+		self.assertEqual(len(show.getElements(assignedTo='foo', authors='bob')), 0)
+
 		with self.assertRaises(ValueError):
 			# Non-sanitary alias
 			Show('foo bar')
+
+		with self.assertRaises(ValueError):
+			# Long alias
+			Show('thisaliasiswaytoolong')
 
 		# Nonextant attributes
 		self.assertIs(show.get('randomAttr'), None)
@@ -105,6 +124,11 @@ class DatabaseTestCase(unittest.TestCase):
 		self.assertFalse(seq1._exists)
 		self.assertFalse(seq1.exists())
 		self.assertTrue(Show(seq1.show).exists())
+
+		seq = Sequence(100, show='foobar')
+
+		self.assertEqual(Shot(100, 100, 'foobar').id, seq.getShots([100])[0].id)
+		self.assertEqual(len(seq.getShots(300)), 0)
 
 		with self.assertRaises(ValueError):
 			badSeq = Sequence(100, show='nonextant')
@@ -181,6 +205,11 @@ class DatabaseTestCase(unittest.TestCase):
 		self.assertTrue(Shot(el.shot, el.sequence, el.show).exists())
 
 		self.assertTrue(Element('test', 'prop', 'foobar').exists())
+
+		el.insert()
+		pf = PublishedFile('test', 'prop', '', shot=100, sequence=100, show='foobar')
+		pf.insert()
+		self.assertEqual(el.getPublishedFiles()[0].id, pf.id)
 
 		self.assertIn(el.table, Manager.TABLE_LIST)
 		self.assertFalse(os.path.exists(el.work_path))
@@ -291,16 +320,24 @@ class DatabaseTestCase(unittest.TestCase):
 			mgr.initTables()
 
 			Person('spaouellet').insert()
+			Person('foo').insert()
 			Show('foobar', makeDirs=True).insert()
 			Sequence(100, 'foobar', makeDirs=True).insert()
+			Sequence(900, 'foobar', makeDirs=True).insert()
 			Shot(100, 100, 'foobar', makeDirs=True).insert()
+			Shot(200, 100, 'foobar', makeDirs=True).insert()
+			Shot(200, 900, 'foobar', makeDirs=True).insert()
 			Element('test', 'prop', 'foobar', makeDirs=True).insert()
+			e = Element('camera', 'camera', 'foobar', sequence=100, makeDirs=True)
+			e.set('assigned_to', 'foo', insertIfMissing=True)
+			Element('render', 'plate', 'foobar', shot=100, sequence=100, makeDirs=True).insert()
 			Fix('Test fix', 'This is the body', show='foobar').insert()
 
 			env.show = 'foobar'
 
 	@classmethod
 	def tearDownClass(cls):
+		# return
 		if os.path.isdir(os.environ['HELIX_WORK']):
 			shutil.rmtree(os.environ['HELIX_WORK'])
 

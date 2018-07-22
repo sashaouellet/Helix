@@ -11,7 +11,7 @@ from helix.utils.fileutils import SHOT_FORMAT, SEQUENCE_FORMAT
 class Take(DatabaseObject):
 	TABLE = 'takes'
 
-	def __init__(self, filePath, shot, sequence, show=None, author=None, comment=None, start=None, end=None):
+	def __init__(self, filePath, shot, sequence, show=None, author=None, comment=None, start=None, end=None, dummy=False):
 		self.table = Take.TABLE
 		self.show = show if show else env.show
 		self.sequence = sequence
@@ -24,6 +24,8 @@ class Take(DatabaseObject):
 		self.first_frame = start
 		self.last_frame = end
 
+		if dummy:
+			return
 
 		if not self.show:
 			raise ValueError('Tried to fallback to environment-set show, but it was null.')
@@ -33,7 +35,7 @@ class Take(DatabaseObject):
 		if not s.exists():
 			raise ValueError('No such show: {}'.format(show))
 
-		if self.sequence:
+		if self.sequence is not None:
 			try:
 				self.sequence = int(self.sequence)
 			except ValueError:
@@ -46,7 +48,7 @@ class Take(DatabaseObject):
 			else:
 				self.sequenceId = sq.id
 
-		if self.shot and self.sequence:
+		if self.shot is not None and self.sequence is not None:
 			try:
 				self.shot = int(shot)
 			except ValueError:

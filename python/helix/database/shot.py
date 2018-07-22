@@ -26,7 +26,7 @@ class Shot(DatabaseObject):
 		13: 'review',
 		14: 'done'
 	}
-	def __init__(self, num, sequence, show=None, author=None, makeDirs=False):
+	def __init__(self, num, sequence, show=None, author=None, makeDirs=False, dummy=False):
 		self.table = Shot.TABLE
 		self.num = num
 		self.sequence = sequence
@@ -35,7 +35,10 @@ class Shot(DatabaseObject):
 
 		self.sequenceId = None
 
-		if not num:
+		if dummy:
+			return
+
+		if num is None:
 			raise ValueError('Shot\'s num can\'t be None')
 
 		try:
@@ -43,7 +46,7 @@ class Shot(DatabaseObject):
 		except ValueError:
 			raise ValueError('Shot number must be a number, not: {}'.format(num))
 
-		if not sequence:
+		if sequence is None:
 			raise ValueError('Shot\'s sequence can\'t be None')
 
 		try:
@@ -91,12 +94,12 @@ class Shot(DatabaseObject):
 			self.work_path = os.path.join(sq.work_path, self.directory)
 			self.release_path = os.path.join(sq.release_path, self.directory)
 
-		if makeDirs:
-			if not os.path.isdir(self.work_path):
-				os.makedirs(self.work_path)
+			if makeDirs:
+				if not os.path.isdir(self.work_path):
+					os.makedirs(self.work_path)
 
-			if not os.path.isdir(self.release_path):
-				os.makedirs(self.release_path)
+				if not os.path.isdir(self.release_path):
+					os.makedirs(self.release_path)
 
 	@property
 	def id(self):
@@ -118,3 +121,7 @@ class Shot(DatabaseObject):
 	@property
 	def pk(self):
 		return 'id'
+
+	@staticmethod
+	def dummy():
+		return Shot(0, 0, dummy=True)
