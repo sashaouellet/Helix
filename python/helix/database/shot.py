@@ -1,14 +1,15 @@
 import os
 
-from helix.database.database import DatabaseObject
+from helix.database.elementContainer import ElementContainer
 from helix.database.show import Show
 from helix.database.sequence import Sequence
 from helix.database.person import Person
 import helix.environment.environment as env
 from helix.utils.fileutils import SHOT_FORMAT
 
-class Shot(DatabaseObject):
+class Shot(ElementContainer):
 	TABLE = 'shots'
+	PK = 'id'
 	STATUS = { # TODO: configurable
 		0: 'new', # Should always be first though
 		1: 'assigned',
@@ -26,11 +27,12 @@ class Shot(DatabaseObject):
 		13: 'review',
 		14: 'done'
 	}
-	def __init__(self, num, sequence, show=None, author=None, makeDirs=False, dummy=False):
+	def __init__(self, num, sequence, show=None, author=None, clipName=None, start=0, end=0, makeDirs=False, dummy=False):
 		self.table = Shot.TABLE
 		self.num = num
 		self.sequence = sequence
-		self.show = show if show else env.show
+		self.show = show if show else env.getEnvironment('show')
+		self.clipName = clipName
 		self._exists = None
 
 		self.sequenceId = None
@@ -63,13 +65,14 @@ class Shot(DatabaseObject):
 			self.unmap(fetched)
 			self._exists = True
 		else:
+			self._exists = False
 			creationInfo = env.getCreationInfo(format=False)
 
 			self.author = author if author else creationInfo[0]
 			self.creation = creationInfo[1]
-			self.start = 0
-			self.end = 0
-			self.clipName = None
+			self.start = start
+			self.end = end
+			self.clipName = clipName
 			self.status = Shot.STATUS[0]
 			self.assigned_to = None
 			self.take = 0
@@ -101,13 +104,31 @@ class Shot(DatabaseObject):
 				if not os.path.isdir(self.release_path):
 					os.makedirs(self.release_path)
 
+	def getElements(self, names=[], types=[], authors=[], assignedTo=[], status=[], exclusive=False, debug=False):
+		return super(Shot, self).getElements(
+			shows=self.show,
+			seqs=self.sequence,
+			shots=self.num,
+			clips=self.clipName if self.clipName else 'null',
+			names=names,
+			types=types,
+			authors=authors,
+			assignedTo=assignedTo,
+			status=status,
+			debug=debug
+		)
+
+	def __str__(self):
+		return 'Shot ' + str(self.num) + (self.clipName if self.clipName else '')
+
 	@property
 	def id(self):
 		return super(Shot, self)._id(
-			'{}_{}_{}'.format(
+			'{}_{}_{}_{}'.format(
 				self.show,
 				str(self.sequence),
-				str(self.num)
+				str(self.num),
+				self.clipName if self.clipName else ''
 			)
 		)
 
@@ -120,7 +141,7 @@ class Shot(DatabaseObject):
 
 	@property
 	def pk(self):
-		return 'id'
+		return Shot.PK
 
 	@staticmethod
 	def dummy():

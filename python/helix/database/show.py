@@ -1,12 +1,13 @@
 import os
 
-from helix.database.database import DatabaseObject
+from helix.database.elementContainer import ElementContainer
 from helix.database.person import Person
 import helix.environment.environment as env
 import helix.utils.utils as utils
 
-class Show(DatabaseObject):
+class Show(ElementContainer):
 	TABLE='shows'
+	PK='alias'
 
 	def __init__(self, alias, name=None, author=None, makeDirs=False, dummy=False):
 		self.table = Show.TABLE
@@ -103,64 +104,22 @@ class Show(DatabaseObject):
 
 			return shots
 
-	def getElements(self, names=[], types=[], seqs=[], shots=[], authors=[], assignedTo=[], status=[]):
-		from helix.database.sql import Manager
-		from helix.database.element import Element
+	def getElements(self, names=[], types=[], seqs=[], shots=[], clips=[], authors=[], assignedTo=[], status=[], exclusive=False, debug=False):
+		return super(Show, self).getElements(
+			shows=self.alias,
+			names=names,
+			types=types,
+			seqs=seqs if not exclusive else 'null',
+			shots=shots if not exclusive else 'null',
+			clips=clips if not exclusive else 'null',
+			authors=authors,
+			assignedTo=assignedTo,
+			status=status,
+			debug=debug
+		)
 
-		with Manager(willCommit=False) as mgr:
-			query = """SELECT * FROM {} WHERE show='{}'""".format(
-				Element.TABLE,
-				self.alias
-			)
-
-			if names is not None:
-				if isinstance(names, str):
-					names = [names]
-				if names:
-					query += " AND name IN ({})".format(','.join(["'{}'".format(n) for n in names]))
-
-			if types is not None:
-				if isinstance(types, str):
-					types = [types]
-				if types:
-					query += " AND type IN ({})".format(','.join(["'{}'".format(n) for n in types]))
-
-			if seqs is not None:
-				if isinstance(seqs, int):
-					seqs = [seqs]
-				if seqs:
-					query += " AND sequence IN ({})".format(','.join(["'{}'".format(n) for n in seqs]))
-
-			if shots is not None:
-				if isinstance(shots, int):
-					shots = [shots]
-				if shots:
-					query += " AND num IN ({})".format(','.join(["'{}'".format(n) for n in shots]))
-
-			if status is not None:
-				if isinstance(status, str):
-					status = [status]
-				if status:
-					query += " AND status IN ({})".format(','.join(["'{}'".format(n) for n in status]))
-
-			if authors is not None:
-				if isinstance(authors, str):
-					authors = [authors]
-				if authors:
-					query += " AND author IN ({})".format(','.join(["'{}'".format(n) for n in authors]))
-
-			if assignedTo is not None:
-				if isinstance(assignedTo, str):
-					assignedTo = [assignedTo]
-				if assignedTo:
-					query += " AND assigned_to IN ({})".format(','.join(["'{}'".format(n) for n in assignedTo]))
-
-			elements = []
-
-			for row in mgr.connection().execute(query).fetchall():
-				elements.append(Element.dummy().unmap(row))
-
-			return elements
+	def __str__(self):
+		return self.alias
 
 	@property
 	def directory(self):
@@ -168,4 +127,8 @@ class Show(DatabaseObject):
 
 	@property
 	def pk(self):
-		return 'alias'
+		return Show.PK
+
+	@staticmethod
+	def dummy():
+		return Show('', dummy=True)

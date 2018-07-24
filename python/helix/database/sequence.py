@@ -1,17 +1,19 @@
 import os
 
-from helix.database.database import DatabaseObject
+from helix.database.elementContainer import ElementContainer
 from helix.database.show import Show
 from helix.database.person import Person
 import helix.environment.environment as env
 from helix.utils.fileutils import SEQUENCE_FORMAT
 
-class Sequence(DatabaseObject):
+class Sequence(ElementContainer):
 	TABLE = 'sequences'
+	PK = 'id'
+
 	def __init__(self, num, show=None, author=None, makeDirs=False, dummy=False):
 		self.table = Sequence.TABLE
 		self.num = num
-		self.show = show if show else env.show
+		self.show = show if show else env.getEnvironment('show')
 		self._exists = None
 
 		if dummy:
@@ -59,6 +61,20 @@ class Sequence(DatabaseObject):
 				if not os.path.isdir(self.release_path):
 					os.makedirs(self.release_path)
 
+	def getElements(self, names=[], types=[], shots=[], clips=[], authors=[], assignedTo=[], status=[], exclusive=False, debug=False):
+		return super(Sequence, self).getElements(
+			shows=self.show,
+			seqs=self.num,
+			names=names,
+			types=types,
+			shots=shots if not exclusive else 'null',
+			clips=clips if not exclusive else 'null',
+			authors=authors,
+			assignedTo=assignedTo,
+			status=status,
+			debug=debug
+		)
+
 	def getShots(self, nums=[]):
 		from helix.database.sql import Manager
 		from helix.database.shot import Shot
@@ -79,6 +95,9 @@ class Sequence(DatabaseObject):
 
 			return shots
 
+	def __str__(self):
+		return 'Sequence ' + str(self.num)
+
 	@property
 	def id(self):
 		return super(Sequence, self)._id(
@@ -94,7 +113,7 @@ class Sequence(DatabaseObject):
 
 	@property
 	def pk(self):
-		return 'id'
+		return Sequence.PK
 
 	@staticmethod
 	def dummy():

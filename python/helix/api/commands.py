@@ -1,7 +1,11 @@
 import sys, os, shlex, shutil, getpass, traceback
 import argparse
 import helix.environment.environment as env
-from helix.database.database import *
+import helix.database.database as db
+from helix.database.show import Show
+from helix.database.sequence import Sequence
+from helix.database.shot import Shot
+from helix.database.element import Element
 from helix.api.exceptions import *
 from helix.environment.permissions import PermissionHandler
 
@@ -10,20 +14,17 @@ dbLoc = env.getEnvironment('db')
 if not dbLoc:
 	raise KeyError('Database location not set in your environment')
 
-db = Database(dbLoc)
 perms = PermissionHandler()
 
 # User commands
-def mkshow(showName):
+def mkshow(alias, name=None):
 	perms.check('helix.create.show')
 
-	show = Show(name=showName)
-
-	show.set('dirName', show.getSafeName())
-	db.addShow(show)
-	db.save()
-
-	print 'Successfully created new show'
+	if Show(alias, name=name, makeDirs=True).insert():
+		print 'Successfully created new show'
+		return True
+	else:
+		raise DatabaseError('Failed to create show. Does this alias already exist?')
 
 def rmshow(showName, clean=False):
 	perms.check('helix.delete.show')
@@ -33,51 +34,47 @@ def rmshow(showName, clean=False):
 	if not show:
 		raise DatabaseError('Didn\'t recognize show: {}'.format(showName))
 
-	db.save()
 
 	print 'Successfully removed show'
 
 def mkseq(seqNum):
 	perms.check('helix.create.sequence')
 
-	seq = Sequence(num=int(seqNum))
-
-	env.show.addSequence(seq)
-	db.save()
+	if Sequence(seqNum, makeDirs=True).insert():
+		print 'Successfully created sequence {}'.format(seqNum)
+		return True
+	else:
+		raise DatabaseError('Failed to create sequence. Does this number already exist?')
 
 def rmseq(seqNum, clean=False):
 	perms.check('helix.delete.sequence')
 
-	seq = env.show.removeSequence(int(seqNum), clean)
+	seq = env.getShow().removeSequence(int(seqNum), clean)
 
 	if not seq:
 		raise DatabaseError('Sequence {} doesn\'t exist'.format(seqNum))
 
-	db.save()
 
 	print 'Successfully removed sequence'
 
-def mkshot(seqNum, shotNum, start, end, clipName):
+def mkshot(seqNum, shotNum, start=0, end=0, clipName=None):
 	perms.check('helix.create.shot')
 
-	seq = env.show.getSequence(seqNum)
-	shot = Shot(seq=int(seqNum), num=int(shotNum), start=int(start), end=int(end), clipName=clipName)
-
-	seq.addShot(shot)
-	db.save()
-
-	print 'Successfully created shot'
+	if Shot(shotNum, seqNum, start=start, end=end, clipName=clipName, makeDirs=True).insert():
+		print 'Successfully created shot {}'.format(shotNum)
+		return True
+	else:
+		raise DatabaseError('Failed to create shot. Does this number already exist?')
 
 def rmshot(seqNum, shotNum, clean=False):
 	perms.check('helix.delete.shot')
 
-	seq = env.show.getSequence(seqNum)
+	seq = env.getShow().getSequence(seqNum)
 	shot = seq.removeShot(int(shotNum), clean)
 
 	if not shot:
 		raise DatabaseError('Shot {} doesn\'t exist for sequence {}'.format(shotNum, seqNum))
 
-	db.save()
 
 	print 'Successfully removed shot'
 
@@ -89,88 +86,64 @@ def pop(showName):
 	if not show:
 		raise DatabaseError('Didn\'t recognize show: {}'.format(showName))
 
-	showName = show.get('name')
+	env.setEnvironment('show', show.alias)
 
-	env.setEnvironment('show', showName)
-	env.show = show
+	print 'Set environment for {}'.format(show.alias)
 
-	print 'Set environment for {}'.format(showName)
-
-def mke(elType, name, sequence=None, shot=None):
+def mke(elType, name, sequence=None, shot=None, clipName=None):
 	perms.check('helix.create.element')
 
-	container = env.show # Where to get element from
-
 	if name == '-':
-		if not sequence or not shot:
-			raise DatabaseError('Sequence and shot must be specified if using "-" name option')
+		name = None
 
-		name = '__sq{}s{}'.format(str(sequence).zfill(env.SEQUENCE_SHOT_PADDING), str(shot).zfill(env.SEQUENCE_SHOT_PADDING))
+	el = Element(name, elType, sequence=sequence, shot=shot, clipName=clipName, makeDirs=True)
 
-		print 'Internal name will now be: {}'.format(name)
+	if el.insert():
+		print 'Successfully created element {}'.format(el)
+		return True
+	else:
+		raise DatabaseError('Failed to create element. Does it already exist?')
 
-	if sequence and shot:
-		_, container = env.show.getShot(sequence, shot)
-	elif sequence:
-		container = env.show.getSequence(sequence)
-
-	element = container.getElement(elType.lower(), name) # TODO sanitize name
-
-	if element:
-		raise DatabaseError('Element already exists')
-
-	el = Element.factory(elType.lower(), name)
-
-	el.setParent(container)
-	container.addElement(el)
-	db.save()
-
-	return el
-
-def get(elType, name, sequence=None, shot=None):
+def get(elType, name=None, sequence=None, shot=None):
 	perms.check('helix.get')
 
-	if name == '-' and sequence and shot:
-		# Trying to get special element created earlier, reformat to internal name
-		name = '__sq{}s{}'.format(str(sequence).zfill(env.SEQUENCE_SHOT_PADDING), str(shot).zfill(env.SEQUENCE_SHOT_PADDING))
+	if name == '-':
+		name = None
 
-	element = env.show.getElement(elType.lower(), name, sequence, shot)
+	element = Element(name, elType, show=env.getShow(), sequence=sequence, shot=shot)
 
 	if not element:
 		raise DatabaseError('Element doesn\'t exist (Check for typos in the name, or make a new element)')
 
-	env.setEnvironment('element', element.getDiskLocation())
-	env.element = element
+	env.setEnvironment('element', element.id)
 
 	print 'Working on {}'.format(element)
 
 # Element-context commands
 def pub(file, range=(), force=False):
 	perms.check('helix.publish')
-	env.element.versionUp(file, range=range, ignoreMissing=force)
-	db.save()
+	env.getWorkingElement().versionUp(file, range=range, ignoreMissing=force)
 
-	print 'Published version: {}'.format(env.element.get('pubVersion'))
+	print 'Published version: {}'.format(env.getWorkingElement().pubVersion)
 
 def roll(version=None):
 	perms.check('helix.rollback')
 
-	element = env.element
+	element = env.getWorkingElement()
 	newVersion = element.rollback(version=version)
 
 	if newVersion:
-		db.save()
+
 		print 'Rolled back published file to version: {}'.format(newVersion)
 
 def mod(attribute, value=None):
-	element = env.element
+	element = env.getWorkingElement()
 
 	if value:
 		perms.check('helix.mod.set')
 		element.set(attribute, value)
 
-		if db.save():
-			print 'Set {} to {}'.format(attribute, value)
+		print 'Set {} to {}'.format(attribute, value)
 	else:
 		perms.check('helix.mod.get')
 		print element.get(attribute)
@@ -207,12 +180,11 @@ def importEl(dir, workFilePath, elType, name=None, sequence=None, shot=None, imp
 	if importAll:
 		fileutils.copytree(dir, el.getDiskLocation(), ignore=shutil.ignore_patterns(os.path.split(workFilePath)[1]))
 
-	db.save()
 
 def clone(show=None, sequence=None, shot=None):
 	# TODO: consider an option for also cloning the work and/or release dirs of the element
 	perms.check('helix.clone')
-	show = env.show if not show else db.getShow(show)
+	show = env.getShow() if not show else db.getShow(show)
 	container = None
 
 	if not show:
@@ -227,30 +199,29 @@ def clone(show=None, sequence=None, shot=None):
 	else:
 		raise HelixException('If specifying a shot to clone into, the sequence number must also be provided.')
 
-	cloned = env.element.clone(container)
+	cloned = env.getWorkingElement().clone(container)
 
 	os.path.makedirs(cloned.getDiskLocation())
-	db.save()
 
 def override(sequence=None, shot=None):
 	perms.check('helix.override')
 	if sequence and shot:
-		seq, s = env.show.getShot(sequence, shot)
+		seq, s = env.getShow().getShot(sequence, shot)
 
-		if env.element.makeOverride(seq, s) and db.save():
+		if env.getWorkingElement().makeOverride(seq, s):
 			print 'Created override for sequence {} shot {}'.format(sequence, shot)
 		else:
 			print 'Override creation failed'
 	elif sequence:
-		seq = env.show.getSequence(sequence)
+		seq = env.getShow().getSequence(sequence)
 
-		if env.element.makeOverride(seq) and db.save():
+		if env.getWorkingElement().makeOverride(seq):
 			print 'Created override for sequence {}'.format(sequence)
 		else:
 			print 'Override creation failed'
 	else:
 		# User is looking for overrides of the current element
-		overrides = env.element.getOverrides()
+		overrides = env.getWorkingElement().getOverrides()
 
 		print 'Sequence overrides:'
 
@@ -269,16 +240,15 @@ def override(sequence=None, shot=None):
 def createFile(path=None):
 	if not path:
 		perms.check('helix.workfile.get')
-		wf = env.element.getWorkFile('')
+		wf = env.getWorkingElement().getWorkFile('')
 		# User trying to retrieve the work file
 	else:
 		perms.check('helix.workfile.create')
 		if not os.path.exists(path):
 			raise HelixException('Cannot create work file from path: {} (File does not exist)'.format(path))
 
-		wf = env.element.getWorkFile(path)
+		wf = env.getWorkingElement().getWorkFile(path)
 
-	db.save()
 
 def shows():
 	perms.check('helix.view.show')
@@ -286,11 +256,11 @@ def shows():
 
 def sequences():
 	perms.check('helix.view.sequence')
-	print '\n'.join([str(s) for s in sorted(env.show.getSequences(), key=lambda x: x.get('num'))])
+	print '\n'.join([str(s) for s in sorted(env.getShow().getSequences(), key=lambda x: x.get('num'))])
 
 def shots(seqNum):
 	perms.check('helix.view.shot')
-	seq = env.show.getSequence(seqNum)
+	seq = env.getShow().getSequence(seqNum)
 
 	print '\n'.join([str(s) for s in sorted(seq.getShots(), key=lambda x: x.get('num'))])
 
@@ -299,12 +269,12 @@ def elements(elType=None, sequence=None, shot=None, date=None):
 	if elType:
 		elType = elType.split(',')
 
-	container = env.show
+	container = env.getShow()
 
 	if sequence and shot:
-		_, container = env.show.getShot(sequence, shot)
+		_, container = env.getShow().getShot(sequence, shot)
 	elif sequence:
-		container = env.show.getSequence(sequence)
+		container = env.getShow().getSequence(sequence)
 
 	els = container.getElements(types=elType)
 
@@ -324,19 +294,18 @@ def elements(elType=None, sequence=None, shot=None, date=None):
 
 def rme(elType, name, sequence=None, shot=None, clean=False):
 	perms.check('helix.delete.element')
-	container = env.show # Where to get element from
+	container = env.getShow() # Where to get element from
 
 	if sequence and shot:
-		_, container = env.show.getShot(sequence, shot)
+		_, container = env.getShow().getShot(sequence, shot)
 	elif sequence:
-		container = env.show.getSequence(sequence)
+		container = env.getShow().getSequence(sequence)
 
 	element = container.getElement(elType.lower(), name) # TODO sanitize name
 
 	container.destroyElement(elType, name, clean)
 
-	if db.save():
-		print 'Successfully removed element {}'.format(element)
+	print 'Successfully removed element {}'.format(element)
 
 # Debug and dev commands
 def dump(expanded=False):
@@ -358,15 +327,16 @@ def main(cmd, argv):
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
-		pop(**args)
+		return pop(**args)
 	elif cmd == 'mkshow':
 		parser = argparse.ArgumentParser(prog='mkshow', description='Make a new show')
 
-		parser.add_argument('showName', help='The name of the show. Surround in quotes for multi-word names.')
+		parser.add_argument('alias', help='The alias of the show. Has character restrictions (i.e. no spaces or special characters)')
+		parser.add_argument('--name', '-n', help='The full name of the show. Please surround with double quotes (").')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
-		mkshow(**args)
+		return mkshow(**args)
 	elif cmd == 'rmshow':
 		parser = argparse.ArgumentParser(prog='rmshow', description='Delete an existing show. Optionally also remove associated files from disk.')
 
@@ -381,9 +351,9 @@ def main(cmd, argv):
 		resp = sys.stdin.readline().strip().lower()
 
 		if resp in ('y', 'yes'):
-			rmshow(**args)
+			return rmshow(**args)
 	elif cmd == 'mkseq':
-		if not env.show:
+		if not env.getEnvironment('show'):
 			print 'Please pop into a show first'
 			return
 
@@ -393,9 +363,9 @@ def main(cmd, argv):
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
-		mkseq(**args)
+		return mkseq(**args)
 	elif cmd == 'rmseq':
-		if not env.show:
+		if not env.getEnvironment('show'):
 			print 'Please pop into a show first'
 			return
 
@@ -406,9 +376,9 @@ def main(cmd, argv):
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
-		rmseq(**args)
+		return rmseq(**args)
 	elif cmd == 'mkshot':
-		if not env.show:
+		if not env.getEnvironment('show'):
 			print 'Please pop into a show first'
 			return
 
@@ -416,15 +386,15 @@ def main(cmd, argv):
 
 		parser.add_argument('seqNum', help='The number of the sequence to make the shot in')
 		parser.add_argument('shotNum', help='The number of the shot to make')
-		parser.add_argument('start', help='Start frame of the shot')
-		parser.add_argument('end', help='End frame of the shot')
-		parser.add_argument('clipName', help='The name of the clip associated with this shot')
+		parser.add_argument('--start', '-s', default=0, help='Start frame of the shot')
+		parser.add_argument('--end', '-e', default=0, help='End frame of the shot')
+		parser.add_argument('--clipName', '-c', default=None, help='The name of the clip associated with this shot')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
-		mkshot(**args)
+		return mkshot(**args)
 	elif cmd == 'rmshot':
-		if not env.show:
+		if not env.getEnvironment('show'):
 			print 'Please pop into a show first'
 			return
 
@@ -436,10 +406,10 @@ def main(cmd, argv):
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
-		rmshot(**args)
+		return rmshot(**args)
 	elif cmd == 'mke':
 		# Command is irrelevant without the show context set
-		if not env.show:
+		if not env.getEnvironment('show'):
 			print 'Please pop into a show first'
 			return
 
@@ -449,10 +419,11 @@ def main(cmd, argv):
 		parser.add_argument('name', help='The name of the element that will be made (i.e. Table). Specify "-" to indicate no name (but sequence and shot must be specified)')
 		parser.add_argument('--sequence', '-sq', default=None, help='The sequence number')
 		parser.add_argument('--shot', '-s', default=None, help='The shot number')
+		parser.add_argument('--clipName', '-c', default=None, help='The clip name of the shot')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
-		mke(**args)
+		return mke(**args)
 	elif cmd == 'clone':
 		if not env.getEnvironment('element'):
 			print 'Please get an element to work on first'
@@ -464,9 +435,9 @@ def main(cmd, argv):
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
-		clone(**args)
+		return clone(**args)
 	elif cmd == 'rme':
-		if not env.show:
+		if not env.getEnvironment('show'):
 			print 'Please pop into a show first'
 			return
 
@@ -480,10 +451,10 @@ def main(cmd, argv):
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
-		rme(**args)
+		return rme(**args)
 	elif cmd == 'get':
 		# Command is irrelevant without the show context set
-		if not env.show:
+		if not env.getEnvironment('show'):
 			print 'Please pop into a show first'
 			return
 
@@ -496,7 +467,7 @@ def main(cmd, argv):
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
-		get(**args)
+		return get(**args)
 	elif cmd == 'pub':
 		# Cannot publish if element hasn't been retrieved to work on yet
 		if not env.getEnvironment('element'):
@@ -517,7 +488,7 @@ def main(cmd, argv):
 			else:
 				args['range'] = (args['range'][0], args['range'][1])
 
-		pub(**args)
+		return pub(**args)
 	elif cmd == 'roll':
 		if not env.getEnvironment('element'):
 			print 'Please get an element to work on first'
@@ -529,7 +500,7 @@ def main(cmd, argv):
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
-		roll(**args)
+		return roll(**args)
 	elif cmd == 'mod':
 		if not env.getEnvironment('element'):
 			print 'Please get an element to work on first'
@@ -542,7 +513,7 @@ def main(cmd, argv):
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
-		mod(**args)
+		return mod(**args)
 	elif cmd == 'override':
 		if not env.getEnvironment('element'):
 			print 'Please get an element to work on first'
@@ -555,7 +526,7 @@ def main(cmd, argv):
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
-		override(**args)
+		return override(**args)
 	elif cmd == 'file':
 		if not env.getEnvironment('element'):
 			print 'Please get an element to work on first'
@@ -567,9 +538,9 @@ def main(cmd, argv):
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
-		createFile(**args)
+		return createFile(**args)
 	elif cmd == 'import':
-		if not env.show:
+		if not env.getEnvironment('show'):
 			print 'Please pop into a show first'
 			return
 
@@ -585,9 +556,9 @@ def main(cmd, argv):
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
-		importEl(**args)
+		return importEl(**args)
 	elif cmd == 'els' or cmd == 'elements':
-		if not env.show:
+		if not env.getEnvironment('show'):
 			print 'Please pop into a show first'
 			return
 
@@ -599,9 +570,9 @@ def main(cmd, argv):
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
-		elements(**args)
+		return elements(**args)
 	elif cmd == 'shots':
-		if not env.show:
+		if not env.getEnvironment('show'):
 			print 'Please pop into a show first'
 			return
 
@@ -611,28 +582,23 @@ def main(cmd, argv):
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
-		shots(**args)
+		return shots(**args)
 	elif cmd == 'seqs' or cmd == 'sequences':
-		if not env.show:
+		if not env.getEnvironment('show'):
 			print 'Please pop into a show first'
 			return
 
 		parser = argparse.ArgumentParser(prog='sequences', description='List all sequences for the current show.')
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
-		sequences(**args)
+		return sequences(**args)
 	elif cmd == 'shows':
 		parser = argparse.ArgumentParser(prog='shows', description='List all shows in this database')
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
-		shows(**args)
+		return shows(**args)
 	elif cmd == 'pwe':
-		# Cannot publish if element hasn't been retrieved to work on yet
-		if not env.getEnvironment('element'):
-			print 'Please get an element to work on first'
-			return
-
-		element = env.element
+		element = env.getEnvironment('element')
 
 		if not element:
 			print 'Element could not be retrieved, try getting it again with "ge"'
@@ -660,13 +626,13 @@ def main(cmd, argv):
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
-		dump(**args)
+		return dump(**args)
 	elif cmd == 'getenv':
 		parser = argparse.ArgumentParser(prog='getenv', description='Gets the custom environment variables that have been set by the Helix system')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
-		getenv(**args)
+		return getenv(**args)
 	elif cmd == 'debug':
 		env.DEBUG = not env.DEBUG
 
@@ -680,7 +646,6 @@ def main(cmd, argv):
 		print 'Unknown command: {}'.format(cmd)
 
 def exit():
-	db.save()
 	sys.exit(0)
 
 def handleInput(line):
@@ -695,7 +660,7 @@ def handleInput(line):
 		cmd = argv[0]
 
 		try:
-			main(cmd, argv[1:])
+			return main(cmd, argv[1:])
 		except SystemExit as e:
 			# I really don't like this, but not sure how to handle
 			# the exception argparse raises when typing an invalid command
@@ -703,8 +668,15 @@ def handleInput(line):
 		except Exception as e:
 			if env.DEBUG:
 				print traceback.format_exc()
+			elif env.HAS_UI:
+				from PyQt4.QtGui import QApplication
+				from helix.utils.qtutils import ExceptionDialog
+
+				ExceptionDialog(traceback.format_exc(e), str(e), parent=QApplication.instance().activeWindow()).exec_()
 			else:
 				print str(e)
+
+			return False
 
 if __name__ == '__main__':
 	if len(sys.argv) > 2:
@@ -719,8 +691,8 @@ if __name__ == '__main__':
 		while True:
 			print '\r{user} {show}@{element}>>> '.format(
 				user=getpass.getuser(),
-				show=env.show.get('dirName') if env.show else 'SHOW',
-				element=env.element.get('name') if env.element else 'ELEMENT'
+				show=env.getShow().alias if os.environ.get('HELIX_SHOW') else 'SHOW',
+				element=env.getWorkingElement().name if os.environ.get('HELIX_ELEMENT') else 'ELEMENT'
 			),
 			line = sys.stdin.readline()
 

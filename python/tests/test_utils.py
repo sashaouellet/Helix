@@ -6,8 +6,8 @@ class UtilTestCase(unittest.TestCase):
 		self.assertEqual(utils.isSanitary('foobar'), (True, []))
 		self.assertEqual(utils.isSanitary('fooBar2'), (True, []))
 		self.assertEqual(utils.isSanitary('foo2_bar'), (True, []))
-		self.assertEqual(utils.isSanitary('foo-bar-bar'), (True, []))
-		self.assertEqual(utils.isSanitary('foo_2_the_bar-bar'), (True, []))
+		self.assertEqual(utils.isSanitary('foo-bar-bar', maxChars=-1), (True, []))
+		self.assertEqual(utils.isSanitary('foo_2_the_bar-bar', maxChars=-1), (True, []))
 		self.assertEqual(utils.isSanitary('aa'), (True, []))
 
 		self.assertEqual(utils.isSanitary('a'),

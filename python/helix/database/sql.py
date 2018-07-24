@@ -20,9 +20,15 @@ class Manager(object):
 		if location:
 			self.location = location
 		else:
-			# TODO put in env var
 			self.location = env.getEnvironment('db')
+
 		self.willCommit = willCommit
+
+		if not os.path.isdir(os.path.dirname(self.location)):
+			os.makedirs(os.path.dirname(self.location))
+
+		if not os.path.exists(self.location):
+			open(self.location, 'w').close()
 
 	def __enter__(self):
 		self.conn = sqlite3.connect(self.location)
@@ -54,8 +60,20 @@ class Manager(object):
 			self.conn.execute('INSERT INTO {} VALUES({})'.format(table, valuesString), values)
 			return True
 		except sqlite3.IntegrityError as e:
-			print str(e)
+			print self.formatError(obj, e)
 			return False
+
+	def formatError(self, obj, e):
+		error = str(e)
+
+		if not isinstance(obj, DatabaseObject):
+			return error
+
+		if error.startswith('UNIQUE constraint failed'):
+			# Already exists
+			return '{} ({}) already exists'.format(type(obj).__name__, getattr(obj, obj.pk))
+		else:
+			return error
 
 	def initTables(self):
 		self.conn.execute(
@@ -135,6 +153,7 @@ class Manager(object):
 				'sequence'		INTEGER,
 				'sequenceId'	VARCHAR(32),
 				'shot'			INTEGER,
+				'shot_clipName'	TEXT,
 				'shotId'		VARCHAR(32),
 				'work_path'		TEXT NOT NULL,
 				'release_path'	TEXT NOT NULL,

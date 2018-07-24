@@ -14,6 +14,7 @@ from helix.api.exceptions import PublishError
 
 class Element(DatabaseObject):
 	TABLE = 'elements'
+	PK = 'id'
 	STATUS = {
 		0: 'new',
 		1: 'assigned',
@@ -32,7 +33,7 @@ class Element(DatabaseObject):
 	PLATE = 'plate'
 	ELEMENT_TYPES = [SET, LIGHT, CHARACTER, PROP, TEXTURE, EFFECT, COMP, CAMERA, PLATE]
 
-	def __init__(self, name, elType, show=None, sequence=None, shot=None, author=None, makeDirs=False, dummy=False):
+	def __init__(self, name, elType, show=None, sequence=None, shot=None, clipName=None, author=None, makeDirs=False, dummy=False):
 		self.table = Element.TABLE
 
 		if name:
@@ -43,7 +44,7 @@ class Element(DatabaseObject):
 
 		self.name = name
 		self.type = elType
-		self.show = show if show else env.show
+		self.show = show if show else env.getEnvironment('show')
 		self.sequence = sequence
 		self.shot = shot
 		self._exists = None
@@ -58,9 +59,10 @@ class Element(DatabaseObject):
 			if not shot or not sequence:
 				raise ValueError('Element\'s name can only be None (considered nameless) if shot and sequence are also specified')
 			else:
-				self.name = '_{}{}'.format(
+				self.name = '_{}{}{}'.format(
 						fileutils.SEQUENCE_FORMAT.format(str(self.sequence).zfill(env.SEQUENCE_SHOT_PADDING)),
-						fileutils.SHOT_FORMAT.format(str(self.shot).zfill(env.SEQUENCE_SHOT_PADDING))
+						fileutils.SHOT_FORMAT.format(str(self.shot).zfill(env.SEQUENCE_SHOT_PADDING)),
+						clipName if clipName else ''
 					)
 
 		if not elType:
@@ -89,6 +91,7 @@ class Element(DatabaseObject):
 			self.pubVersion = 0
 			self.version = 1
 			self.thumbnail = None
+			self.shot_clipName = clipName
 
 			s = Show(self.show)
 
@@ -125,7 +128,7 @@ class Element(DatabaseObject):
 				except ValueError:
 					raise ValueError('Shot number must be a number, not: {}'.format(shot))
 
-				sh = Shot(self.shot, self.sequence, show=self.show)
+				sh = Shot(self.shot, self.sequence, show=self.show, clipName=self.shot_clipName)
 
 				if not sh.exists():
 					raise ValueError('No such shot {} in sequence {} in show {}'.format(sh.num, sh.sequence, sh.show))
@@ -153,14 +156,13 @@ class Element(DatabaseObject):
 		If version is not specified, tries to rollback to the previous version.
 
 		Args:
-		    version (int, optional): The version to change to. If this version doesn't exist on
+			version (int, optional): The version to change to. If this version doesn't exist on
 				disk, or is less than 1 the rollback fails.
 
 		Returns:
-		    bool: If the rollback succeeded or not.
+			bool: If the rollback succeeded or not.
 		"""
-		relDir = self.release_path
-		versionsDir = os.path.join(relDir, '.versions')
+		versionsDir = os.path.join(self.release_path, '.versions')
 		currVersion = self.pubVersion
 		prevVersion = int(currVersion) - 1 if not version else int(version)
 
@@ -169,6 +171,9 @@ class Element(DatabaseObject):
 
 		if prevVersion < 1:
 			raise PublishError('Cannot rollback prior to version 1. Current version found: {}'.format(currVersion))
+
+		if prevVersion == currVersion:
+			raise PublishError('The asset is already set to version {}'.format(prevVersion))
 
 		prevPf = self.getPublishedFileByVersion(prevVersion)
 
@@ -182,17 +187,29 @@ class Element(DatabaseObject):
 			raise PublishError('No files found for previously published version: {}'.format(prevVersion))
 
 		# Remove old versionless
-		for file in os.listdir(relDir):
-			if file != '.versions':
-				os.remove(os.path.join(relDir, file))
+		for root, dirs, files in os.walk(self.release_path):
+			if '.versions' in root.split(os.sep):
+				continue
+			for d in dirs:
+				if d == '.versions':
+					continue
+				shutil.rmtree(os.path.join(root, d))
+			for f in files:
+				os.remove(os.path.join(root, f))
 
 		for path in prevFiles:
 			framePadding = fileutils.getFramePadding(os.path.split(path)[-1])
 			_, ext = os.path.splitext(path)
-			versionlessName = '{}{}{}'.format(self.get('name'), '.' + framePadding if framePadding else '', ext if not os.path.isdir(path) else '')
-			versionlessDest = os.path.join(relDir, versionlessName)
+			versionlessName = '{}{}{}'.format(self.name, '.' + framePadding if framePadding else '', ext if not os.path.isdir(path) else '')
+			versionlessDest = os.path.join(self.release_path, versionlessName)
 
-			os.link(path, versionlessDest)
+			if os.path.isdir(path):
+				if not os.path.isdir(versionlessDest):
+					os.mkdir(versionlessDest)
+
+			fileutils.linkPath(path, versionlessDest)
+
+		self.set('pubVersion', prevVersion)
 
 	def versionUp(self, sourceFile, range=(), ignoreMissing=False):
 		"""Publishes the current element to the next version, copying the proper file(s) to the
@@ -205,11 +222,13 @@ class Element(DatabaseObject):
 		was just published.
 
 		Returns:
-		    bool: Whether the publish action succeeded or not.
+			bool: Whether the publish action succeeded or not.
 		"""
 
 		# If the source file is not an absolute path, the user probably meant it to be
 		# passed in relative to the element's work directory
+		from helix.database.publishedFile import PublishedFile
+
 		if not os.path.isabs(sourceFile):
 			sourceFile = os.path.join(self.work_path, sourceFile)
 
@@ -235,10 +254,12 @@ class Element(DatabaseObject):
 
 			versionedSeq = self.publishFile(sequence)
 			pf = PublishedFile(self.name, self.type, versionedSeq, show=self.show, sequence=self.sequence, shot=self.shot)
+			pf.insert()
 			self.set('pubVersion', pf.version)
 		else:
 			versioned = self.publishFile(sourceFile)
 			pf = PublishedFile(self.name, self.type, versioned, show=self.show, sequence=self.sequence, shot=self.shot)
+			pf.insert()
 			self.set('pubVersion', pf.version)
 
 		self.set('version', self.version + 1)
@@ -252,11 +273,11 @@ class Element(DatabaseObject):
 		renamed accordingly.
 
 		Args:
-		    fileName (str): The current existing file/file from a sequence/directory to publish to the
-		    	release directory
+			fileName (str): The current existing file/file from a sequence/directory to publish to the
+				release directory
 
 		Returns:
-		    str: The complete file path to the versioned file/file sequence/directory that was created as a result of the copy process
+			str: The complete file path to the versioned file/file sequence/directory that was created as a result of the copy process
 		"""
 		versionsDir = os.path.join(self.release_path, '.versions')
 
@@ -273,9 +294,15 @@ class Element(DatabaseObject):
 			newSeq.update(prefix=prefix, padding=env.FRAME_PADDING)
 
 			# Remove old versionless
-			for file in os.listdir(self.release_path):
-				if file != '.versions':
-					os.remove(os.path.join(self.release_path, file))
+			for root, dirs, files in os.walk(self.release_path):
+				if '.versions' in root.split(os.sep):
+					continue
+				for d in dirs:
+					if d == '.versions':
+						continue
+					shutil.rmtree(os.path.join(root, d))
+				for f in files:
+					os.remove(os.path.join(root, f))
 
 			# Hard link to versionless
 			for versionless, versioned in zip(fileName.getFramesAsFilePaths(), newSeq.getFramesAsFilePaths()):
@@ -292,12 +319,21 @@ class Element(DatabaseObject):
 			versionless = os.path.join(self.release_path, versionlessName)
 
 			# Remove old versionless
-			for file in os.listdir(self.release_path):
-				if file != '.versions':
-					os.remove(os.path.join(self.release_path, file))
+			for root, dirs, files in os.walk(self.release_path):
+				if '.versions' in root.split(os.sep):
+					continue
+				for d in dirs:
+					if d == '.versions':
+						continue
+					shutil.rmtree(os.path.join(root, d))
+				for f in files:
+					os.remove(os.path.join(root, f))
+
+			if not os.path.isdir(versionless):
+				os.mkdir(versionless)
 
 			shutil.copytree(fileName, versionedDest)
-			os.link(versionedDest, versionless)
+			fileutils.linkPath(versionedDest, versionless)
 
 			return versionedDest
 		else:
@@ -310,9 +346,15 @@ class Element(DatabaseObject):
 			versionless = os.path.join(self.release_path, versionlessName)
 
 			# Remove old versionless
-			for file in os.listdir(self.release_path):
-				if file != '.versions':
-					os.remove(os.path.join(self.release_path, file))
+			for root, dirs, files in os.walk(self.release_path):
+				if '.versions' in root.split(os.sep):
+					continue
+				for d in dirs:
+					if d == '.versions':
+						continue
+					shutil.rmtree(os.path.join(root, d))
+				for f in files:
+					os.remove(os.path.join(root, f))
 
 			shutil.copy2(fileName, versionedDest)
 			os.link(versionedDest, versionless)
@@ -324,6 +366,16 @@ class Element(DatabaseObject):
 		# #from stat import S_IREAD, S_IRGRP, S_SIROTH
 		# #os.chmod(versionDest, S_IREAD|S_IRGRP|S_SIROTH)
 		# #os.chmod(versionlessFile, S_IREAD|S_IRGRP|S_SIROTH)
+
+	def getPublishedVersions(self):
+		from helix.database.sql import Manager
+		from helix.database.publishedFile import PublishedFile
+
+		with Manager(willCommit=False) as mgr:
+			query = """SELECT version FROM {} WHERE show='{}' AND elementId='{}'""".format(PublishedFile.TABLE, self.show, self.id)
+			rows = mgr.connection().execute(query).fetchall()
+
+			return [r[0] for r in rows]
 
 	def getPublishedFiles(self, authors=[]):
 		from helix.database.sql import Manager
@@ -345,7 +397,7 @@ class Element(DatabaseObject):
 
 			return pfs
 
-	def getPublishedFileByVersion(self, version):
+	def getPublishedFileByVersion(self, version, authors=[]):
 		from helix.database.sql import Manager
 		from helix.database.publishedFile import PublishedFile
 
@@ -378,6 +430,9 @@ class Element(DatabaseObject):
 
 		return el
 
+	def __str__(self):
+		return self.name + ' (' + self.type + ')'
+
 	@property
 	def id(self):
 		return super(Element, self)._id(
@@ -397,7 +452,7 @@ class Element(DatabaseObject):
 
 	@property
 	def pk(self):
-		return 'id'
+		return Element.PK
 
 	@staticmethod
 	def dummy():

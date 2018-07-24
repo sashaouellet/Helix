@@ -74,6 +74,27 @@ class DatabaseObject(object):
 				else:
 					return False
 
+	@classmethod
+	def fromPk(cls, pk):
+		if not pk:
+			return None
+
+		from helix.database.sql import Manager
+
+		with Manager(willCommit=False) as mgr:
+			query = """SELECT * FROM {} WHERE {}='{}'""".format(
+				cls.TABLE,
+				cls.PK,
+				pk
+			)
+
+			row = mgr.connection().execute(query).fetchone()
+
+			if row:
+				return cls.dummy().unmap(row)
+
+		return None
+
 	def _id(self, token=''):
 		# It's useless to call this on a subclass that hasn't
 		# overwritten this method.. which is fine, not all of them
@@ -111,6 +132,8 @@ class DatabaseObject(object):
 					# when we retrieve them later
 					pass
 
+			self._exists = True
+
 			return self
 
 	def __repr__(self):
@@ -127,6 +150,40 @@ class DatabaseObject(object):
 				vals.append((c + '=' + str(val)))
 
 			return type(self).__name__ + ' (' + ', '.join(vals) + ')'
+
+	def __eq__(self, other):
+		if not isinstance(other, type(self)):
+			return False
+
+		return self.__dict__ == other.__dict__
+
+	def __ne__(self, other):
+		return not (self == other)
+
+def getShows():
+	from helix.database.sql import Manager
+	from helix.database.show import Show
+	with Manager(willCommit=False) as mgr:
+		query = """SELECT * FROM {}""".format(Show.TABLE)
+		rows = mgr.connection().execute(query).fetchall()
+		shows = []
+
+		for r in rows:
+			shows.append(Show.dummy().unmap(r))
+
+		return shows
+
+def getShow(alias):
+	from helix.database.sql import Manager
+	from helix.database.show import Show
+	with Manager(willCommit=False) as mgr:
+		query = """SELECT * FROM {} WHERE alias='{}'""".format(Show.TABLE, alias)
+		row = mgr.connection().execute(query).fetchone()
+
+		if row and row[0]:
+			return Show.dummy().unmap(row)
+
+		return None
 
 class Element(DatabaseObject):
 

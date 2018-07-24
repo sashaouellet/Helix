@@ -1,6 +1,13 @@
+import os, sys
+from datetime import datetime
+
 import helix
-from helix.database.database import *
-import helix.api.commands as cmds
+from helix.database.show import Show
+from helix.database.sequence import Sequence
+from helix.database.shot import Shot
+from helix.database.element import Element
+import helix.database.database as db
+import helix.api.commands as hxcmds
 import helix.environment.environment as env
 import helix.environment.permissions as perms
 import helix.utils.fileutils as fileutils
@@ -10,15 +17,13 @@ from helix.manager.console import Console
 from helix.manager.element import ElementViewWidget
 from helix.utils.qtutils import ExceptionDialog, FileChooserLayout
 from helix.utils.qtutils import Node
+import helix.utils.utils as utils
 
 import qdarkstyle
 
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 from PyQt4 import uic
-
-import os
-from datetime import datetime
 
 class ShowModel(QAbstractItemModel):
 	def __init__(self, shows, parent=None):
@@ -39,19 +44,20 @@ class ShowModel(QAbstractItemModel):
 
 		self._root = Node()
 
-		shows.sort(key=lambda s: s.get('name'))
+		shows.sort(key=lambda s: getattr(s, s.pk))
 
 		for show in shows:
+			env.setEnvironment('show', show.alias)
 			showNode = self._root.addChild(Node(show))
 			seqs = show.getSequences()
 
-			seqs.sort(key=lambda s: s.get('num'))
+			seqs.sort(key=lambda s: s.num)
 
 			for seq in seqs:
 				seqNode = showNode.addChild(Node(seq))
 				shots = seq.getShots()
 
-				shots.sort(key=lambda s: s.get('num'))
+				shots.sort(key=lambda s: s.num)
 
 				for shot in shots:
 					seqNode.addChild(Node(shot))
@@ -124,16 +130,16 @@ class ElementTableItem(QLabel):
 
 		self.parent = parent
 		self.element = el
-		self.setText(self.element.get(ElementTableItem.DATA_MAPPING[col]))
+		self.setText(getattr(self.element, ElementTableItem.DATA_MAPPING[col]))
 
-		self.explorerAction = QAction('Open file location', self)
+		self.explorerAction = QAction('Open work directory', self)
 		self.exploreReleaseAction = QAction('Open release directory', self)
-		self.publishAction = QAction('Publish', self)
+		self.publishAction = QAction('Publish...', self)
 		self.rollbackAction = QAction('Rollback...', self)
 		self.propertiesAction = QAction('Properties...', self)
 
 		# No rollback option if we have no publishes for the element
-		if not self.element.get('pubVersion'):
+		if not self.element.pubVersion:
 			self.rollbackAction.setEnabled(False)
 
 		self.setContextMenuPolicy(Qt.ActionsContextMenu)
@@ -151,16 +157,20 @@ class ElementTableItem(QLabel):
 		self.propertiesAction.triggered.connect(self.parent.handleElementEdit)
 
 	def handleExplorer(self, work):
-		path = self.element.getDiskLocation(workDir=work)
+		path = self.element.work_path
+
+		if not work:
+			path = self.element.release_path
 
 		fileutils.openPathInExplorer(path)
 
 	def handlePublish(self):
-		env.element = self.element
+		env.setEnvironment('element', self.element.id)
 		publishDialog = PublishDialog(self.parent, self.element)
 		publishDialog.exec_()
 
 	def handleRollback(self):
+		env.setEnvironment('element', self.element.id)
 		self.parent.rollbackDialog.show(self.element)
 
 class PublishDialog(QDialog):
@@ -174,7 +184,7 @@ class PublishDialog(QDialog):
 
 		self.layout.addWidget(QLabel('Select a file or folder to publish. For sequences, you can pick any 1 file from the sequence'))
 
-		self.fileChooser = FileChooserLayout(self, defaultText=element.getDiskLocation(), selectionMode=FileChooserLayout.ANY)
+		self.fileChooser = FileChooserLayout(self, defaultText=element.work_path, selectionMode=FileChooserLayout.ANY)
 		self.layout.addLayout(self.fileChooser)
 
 		self.publishLabel = QLabel('Publishing as: -')
@@ -270,7 +280,6 @@ class PublishDialog(QDialog):
 				cmd.append('--force')
 
 			self.parent().console.injectGetElement(self.element)
-			print cmd
 			self.parent().console.inject(cmd)
 		except Exception as e:
 			ExceptionDialog(e, parent=self).exec_()
@@ -284,35 +293,46 @@ class NewShowDialog(QDialog):
 	def makeConnections(self):
 		self.BTN_create.clicked.connect(self.accept)
 		self.BTN_cancel.clicked.connect(self.reject)
-		self.LNE_name.textChanged.connect(self.checkCanCreate)
+		self.LNE_alias.textChanged.connect(self.checkCanCreate)
 
-	def checkCanCreate(self, text):
-		self.BTN_create.setEnabled(str(text).strip() != '')
+	def checkCanCreate(self):
+		text = str(self.LNE_alias.text())
+		self.LBL_issues.setText('')
+
+		if not text:
+			self.BTN_create.setEnabled(False)
+			self.LBL_issues.setText('<font color="red">Alias is required</font>')
+		else:
+			sanitary, reasons = utils.isSanitary(text)
+
+			self.BTN_create.setEnabled(sanitary)
+			self.LBL_issues.setText(
+				'<br>'.join(['<font color="red">{}</font>'.format(r) for r in reasons])
+			)
 
 	def accept(self):
-		showName, aliases = self.getInputs()
-		aliases = [a.strip() for a in aliases.split(',')]
+		alias, name = self.getInputs()
 
-		cmds.mkshow(showName)
+		cmd = ['mkshow', alias]
 
-		show = self.parent().db.getShow(showName)
+		if name:
+			cmd.extend(['--name', '"{}"'.format(name)])
 
-		show.set('aliases', aliases)
+		result = self.parent().console.inject(cmd)
 
-		self.parent().db.save()
-		self.parent().handleDBReload()
-
-		super(NewShowDialog, self).accept()
+		if result:
+			self.parent().handleDBReload()
+			super(NewShowDialog, self).accept()
 
 	def show(self):
+		self.LNE_alias.setText('')
 		self.LNE_name.setText('')
-		self.LNE_aliases.setText('')
 
-		self.checkCanCreate('')
+		self.checkCanCreate()
 		super(NewShowDialog, self).show()
 
 	def getInputs(self):
-		return (str(self.LNE_name.text()).strip(), str(self.LNE_aliases.text()).strip())
+		return (str(self.LNE_alias.text()).strip(), str(self.LNE_name.text()).strip())
 
 class NewSequenceDialog(QDialog):
 	def __init__(self, parent):
@@ -321,35 +341,33 @@ class NewSequenceDialog(QDialog):
 	def makeConnections(self):
 		self.BTN_create.clicked.connect(self.accept)
 		self.BTN_cancel.clicked.connect(self.reject)
-		self.LNE_number.textChanged.connect(self.checkCanCreate)
-
-	def checkCanCreate(self, text):
-		try:
-			text = int(text)
-			self.BTN_create.setEnabled(True)
-		except ValueError:
-			self.BTN_create.setEnabled(False)
 
 	def accept(self):
-		seqNum = int(self.LNE_number.text())
+		seqNum = int(self.SPN_num.value())
 
-		cmds.pop(self._show.get('name'))
+		self.parent().console.inject(['pop', self._show])
 
-		try:
-			cmds.mkseq(seqNum)
+		result = self.parent().console.inject(['mkseq', str(seqNum)])
+
+		if result:
 			self.parent().handleDBReload()
 			super(NewSequenceDialog, self).accept()
-		except Exception, e:
-			QMessageBox.warning(self, 'Sequence creation error', str(e))
-			return
 
-	def show(self, showObj):
-		self._show = showObj
+	def show(self, showName):
+		self._show = showName
 
-		self.LNE_number.setText('')
+		from helix.database.sql import Manager
+		with Manager(willCommit=False) as mgr:
+			row = mgr.connection().execute(
+				"SELECT MAX(num) FROM {} WHERE show='{}'".format(
+					Sequence.TABLE,
+					self._show
+				)
+			).fetchone()
+
+		self.SPN_num.setValue(row[0] + 100 if row and row[0] is not None else 100)
 		self.LBL_show.setText(str(self._show))
 
-		self.checkCanCreate('')
 		super(NewSequenceDialog, self).show()
 
 class NewShotDialog(QDialog):
@@ -359,40 +377,60 @@ class NewShotDialog(QDialog):
 	def makeConnections(self):
 		self.BTN_create.clicked.connect(self.accept)
 		self.BTN_cancel.clicked.connect(self.reject)
-		self.LNE_number.textChanged.connect(self.checkCanCreate)
-		self.LNE_start.textChanged.connect(self.checkCanCreate)
-		self.LNE_end.textChanged.connect(self.checkCanCreate)
+		self.LNE_clip.textChanged.connect(self.checkCanCreate)
 
 	def checkCanCreate(self):
-		try:
-			shotNum = int(self.LNE_number.text())
-			start = int(self.LNE_start.text())
-			end = int(self.LNE_end.text())
+		text = str(self.LNE_clip.text())
+		self.LBL_issues.setText('')
 
+		if not text:
 			self.BTN_create.setEnabled(True)
-		except ValueError:
-			self.BTN_create.setEnabled(False)
+		else:
+			sanitary, reasons = utils.isSanitary(text, minChars=0)
+
+			self.BTN_create.setEnabled(sanitary)
+			self.LBL_issues.setText(
+				'<br>'.join(['<font color="red">{}</font>'.format(r) for r in reasons])
+			)
 
 	def accept(self):
 		shotNum, start, end, clipName = self.getInputs()
+		cmd = [
+			'mkshot',
+			str(self._seq),
+			str(shotNum),
+			'--start', str(start),
+			'--end', str(end),
+		]
 
-		cmds.pop(self._show.get('name'))
+		if clipName:
+			cmd.extend(['-c', clipName])
 
-		try:
-			cmds.mkshot(self._seq.get('num'), shotNum, start, end, clipName)
+		self.parent().console.inject(['pop', self._show])
+
+		result = self.parent().console.inject(cmd)
+
+		if result:
 			self.parent().handleDBReload()
 			super(NewShotDialog, self).accept()
-		except Exception, e:
-			QMessageBox.warning(self, 'Shot creation error', str(e))
-			return
 
-	def show(self, showObj, seqObj):
-		self._show = showObj
-		self._seq = seqObj
+	def show(self, showName, seq):
+		self._show = showName
+		self._seq = seq
 
-		self.LNE_number.setText('')
-		self.LNE_start.setText('')
-		self.LNE_end.setText('')
+		from helix.database.sql import Manager
+		with Manager(willCommit=False) as mgr:
+			row = mgr.connection().execute(
+				"SELECT MAX(num) FROM {} WHERE show='{}' and sequence='{}'".format(
+					Shot.TABLE,
+					self._show,
+					self._seq
+				)
+			).fetchone()
+
+		self.SPN_num.setValue(row[0] + 100 if row and row[0] is not None else 100)
+		self.SPN_start.setValue(0)
+		self.SPN_end.setValue(0)
 		self.LNE_clip.setText('')
 		self.LBL_show.setText(str(self._show))
 		self.LBL_seq.setText(str(self._seq))
@@ -401,9 +439,9 @@ class NewShotDialog(QDialog):
 		super(NewShotDialog, self).show()
 
 	def getInputs(self):
-		shotNum = int(self.LNE_number.text())
-		start = int(self.LNE_start.text())
-		end = int(self.LNE_end.text())
+		shotNum = self.SPN_num.value()
+		start = self.SPN_start.value()
+		end = self.SPN_end.value()
 		clipName = str(self.LNE_clip.text()).strip()
 
 		return (shotNum, start, end, clipName)
@@ -420,30 +458,54 @@ class NewElementDialog(QDialog):
 
 	def handleNamelessStateChange(self, state):
 		self.LNE_name.setEnabled(state == Qt.Unchecked)
-		self.checkCanCreate('')
+		self.checkCanCreate()
 
-	def checkCanCreate(self, text):
-		self.BTN_create.setEnabled(str(text).strip() != '' or self.CHK_nameless.checkState() == Qt.Checked)
+	def checkCanCreate(self):
+		text = str(self.LNE_name.text())
+		self.LBL_issues.setText('')
+
+		if self.CHK_nameless.isChecked():
+			self.BTN_create.setEnabled(True)
+		else:
+			sanitary, reasons = utils.isSanitary(text, minChars=1, maxChars=40)
+
+			if len(text) > 40:
+				reasons.append('More than 40 characters? Really?')
+
+			self.BTN_create.setEnabled(sanitary)
+			self.LBL_issues.setText(
+				'<br>'.join(['<font color="red">{}</font>'.format(r) for r in reasons])
+			)
 
 	def accept(self):
 		name, elType = self.getInputs()
 
-		cmds.pop(self._show.get('name'))
+		seq = self._seq.num if self._seq else None
+		shot = self._shot.num if self._shot else None
+		clip = self._shot.clipName if self._shot else None
 
-		seq = self._seq.get('num') if self._seq else None
-		shot = self._shot.get('num') if self._shot else None
+		cmd = [
+			'mke',
+			elType,
+			name,
+		]
 
-		try:
-			cmds.mke(elType, name, sequence=seq, shot=shot)
+		if seq:
+			cmd.extend(['-sq', str(seq)])
+
+		if shot:
+			cmd.extend(['-s', str(shot)])
+
+		if clip:
+			cmd.extend(['-c', clip])
+
+		self.parent().console.inject(['pop', self._show.alias])
+
+		result = self.parent().console.inject(cmd)
+
+		if result:
 			self.parent().handleDBReload()
 			super(NewElementDialog, self).accept()
-		except DatabaseError, e:
-			QMessageBox.warning(self, 'Element creation error', str(e))
-			return
-		except MergeConflictError, e:
-			self.parent().handleSaveConflict(e)
-		except Exception as e:
-			ExceptionDialog(e, parent=window).exec_()
 
 	def show(self, showObj, seqObj, shotObj):
 		self._show = showObj
@@ -461,7 +523,7 @@ class NewElementDialog(QDialog):
 		self.CHK_nameless.setVisible(self._seq is not None and self._shot is not None)
 		self.LBL_container.setText(str(container))
 
-		self.checkCanCreate('')
+		self.checkCanCreate()
 
 		super(NewElementDialog, self).show()
 
@@ -480,12 +542,14 @@ class RollbackDialog(QDialog):
 		self.BTN_cancel.clicked.connect(self.reject)
 
 	def accept(self):
-		rollbackVer = int(self.CMB_rollback.currentText())
+		rollbackVer = self.CMB_rollback.currentText()
 
 		try:
-			env.element = self._element
+			cmd = ['roll', '-v', str(rollbackVer)]
 
-			cmds.roll(rollbackVer)
+			self.parent().console.injectGetElement(self._element)
+			self.parent().console.inject(cmd)
+
 			super(RollbackDialog, self).accept()
 		except Exception, e:
 			QMessageBox.warning(self, 'Rollback error', str(e))
@@ -494,12 +558,14 @@ class RollbackDialog(QDialog):
 	def show(self, element):
 		self._element = element
 
-		self.LBL_pubVersion.setText(str(element.get('pubVersion', '--')))
+		self.LBL_pubVersion.setText(str(element.pubVersion if element.pubVersion else '--'))
 		self.CMB_rollback.clear()
 
-		verInfo = element.getPublishedVersions()
+		versions = element.getPublishedVersions()
 
-		self.CMB_rollback.addItems([str(ver.get('version')) for ver in verInfo])
+		# Add all but the current published version, we don't allow for them to rollback
+		# to the current version anyway
+		self.CMB_rollback.addItems([str(ver) for ver in versions if ver != element.pubVersion])
 
 		super(RollbackDialog, self).show()
 
@@ -522,7 +588,7 @@ class PropertyValueModel(QAbstractItemModel):
 		return 2
 
 	def rowCount(self, index):
-		len([k for k in self.root._data.keys() if k not in ('_DBOType', 'elements', 'sequences', 'shots')])
+		return 0
 
 	def data(self, index, role):
 		if not index.isValid():
@@ -540,90 +606,38 @@ class EditingDialog(QDialog):
 		super(EditingDialog, self).__init__(parent)
 
 	def setItem(self, item):
-		propBlacklist = ['_DBOType', 'elements', 'sequences', 'shots']
+		QCoreApplication.instance().setOverrideCursor(QCursor(Qt.WaitCursor))
+		self.BTN_refresh.setIcon(QApplication.instance().style().standardIcon(QStyle.SP_BrowserReload))
 		self.item = item
 
-		self.setWindowTitle('Editing {}'.format(str(self.item)))
+		self.setWindowTitle('{} properties'.format(str(self.item)))
 		self.TBL_properties.clearContents()
 		self.TBL_properties.setRowCount(0)
 
 		row = 0
 
-		for parm, val in item._data.iteritems():
-			if str(parm) in propBlacklist:
-				continue
+		from helix.database.sql import Manager
+		with Manager(willCommit=False) as mgr:
+			for c, _ in mgr.getColumnNames(item.table):
+				self.TBL_properties.insertRow(row)
 
-			self.TBL_properties.insertRow(row)
+				# TODO add refresh to this dialog
+				propItem = QTableWidgetItem(c)
+				valItem = QTableWidgetItem(str(item.get(c))) # Actually pull off disk
 
-			propItem = QTableWidgetItem(parm)
+				propItem.setFlags(propItem.flags() & ~Qt.ItemIsEditable)
+				valItem.setFlags(valItem.flags() & ~Qt.ItemIsEditable)
 
-			#if type(val) in (dict, list, tuple, set):
-				#if type(val) == dict:
-					#valItem = QTableWidget(self.TBL_properties)
+				self.TBL_properties.setItem(row, 1, valItem)
+				self.TBL_properties.setItem(row, 0, propItem)
 
-					#valItem.setColumnCount(2)
-					#valItem.horizontalHeader().hide()
-					#valItem.verticalHeader().hide()
-
-					#r = 0
-
-					#for p, v in val.iteritems():
-						#if str(p) in propBlacklist:
-							#continue
-
-						#valItem.insertRow(r)
-						#valItem.setItem(r, 0, QTableWidgetItem(str(p)))
-						#valItem.setItem(r, 1, QTableWidgetItem(str(v)))
-
-						#r += 1
-
-					#valItem.horizontalHeader().setResizeMode(QHeaderView.ResizeToContents)
-				#else:
-					#val = list(val)
-					#valItem = QListWidget(self.TBL_properties)
-
-					#for r, v in enumerate(val):
-						#valItem.insertItem(r, str(v))
-
-				#self.TBL_properties.setCellWidget(row, 1, valItem)
-			#else:
-				#valItem = QTableWidgetItem(str(val))
-
-				#self.TBL_properties.setItem(row, 1, valItem)
-
-			valItem = QTableWidgetItem(str(val))
-
-			self.TBL_properties.setItem(row, 1, valItem)
-			propItem.setFlags(Qt.ItemIsSelectable|Qt.ItemIsEnabled)
-			self.TBL_properties.setItem(row, 0, propItem)
-
-			row += 1
+				row += 1
 
 		self.TBL_properties.verticalHeader().setResizeMode(QHeaderView.ResizeToContents)
-		self.show()
+		QCoreApplication.instance().restoreOverrideCursor()
 
 	def makeConnections(self):
-		self.BTN_cancel.clicked.connect(self.reject)
-		self.BTN_save.clicked.connect(self.accept)
-		self.BTN_new.clicked.connect(self.handleNewParm)
-
-	def handleNewParm(self):
-		row = self.TBL_properties.rowCount()
-
-		self.TBL_properties.insertRow(row)
-
-		propItem = QTableWidgetItem('property')
-
-		self.TBL_properties.setItem(row, 0, propItem)
-		self.TBL_properties.setItem(row, 1, QTableWidgetItem('value'))
-
-		# Now set it up so that the new property is instantly in edit mode
-
-		self.TBL_properties.setCurrentItem(propItem)
-
-		idx = self.TBL_properties.model().index(row, 0, QModelIndex())
-
-		self.TBL_properties.edit(idx)
+		self.BTN_refresh.clicked.connect(lambda: self.setItem(self.item))
 
 	def accept(self):
 		super(EditingDialog, self).accept()
@@ -908,7 +922,6 @@ class ManagerWindow(QMainWindow):
 		self.elViewerHidden = True
 
 		self.addDockWidget(Qt.RightDockWidgetArea, self.console)
-		# self.removeDockWidget(self.console)
 
 		uic.loadUi(os.path.join(helix.root, 'ui', 'editingDialog.ui'), self.editDialog)
 		self.editDialog.makeConnections()
@@ -953,7 +966,8 @@ class ManagerWindow(QMainWindow):
 		self.checkAction('helix.config.view', self.ACT_prefExe)
 
 	def checkAction(self, permNode, action):
-		action.setEnabled(self.permHandler.check(permNode, silent=True))
+		if not self.permHandler.check(permNode, silent=True):
+			action.setDisabled(True)
 
 	def dragEnterEvent(self, event):
 		if event.mimeData().hasUrls():
@@ -1116,7 +1130,7 @@ class ManagerWindow(QMainWindow):
 			parent = parent.parent()
 
 		# data is now the Show
-		self.seqCreationDialog.show(data)
+		self.seqCreationDialog.show(data.alias)
 
 	def handleNewShot(self):
 		index = self.VIEW_cols.selectionModel().currentIndex()
@@ -1137,7 +1151,7 @@ class ManagerWindow(QMainWindow):
 			parent = parent.parent()
 
 		# data is now the Show
-		self.shotCreationDialog.show(data, seq)
+		self.shotCreationDialog.show(data.alias, seq.num)
 
 	def handleNewElement(self):
 		index = self.VIEW_cols.selectionModel().currentIndex()
@@ -1170,6 +1184,7 @@ class ManagerWindow(QMainWindow):
 		item = index.internalPointer().data(0)
 
 		self.editDialog.setItem(item)
+		self.editDialog.show()
 
 	def handleElementEdit(self, item=None):
 		if not item:
@@ -1184,6 +1199,7 @@ class ManagerWindow(QMainWindow):
 			return
 
 		self.editDialog.setItem(item.element)
+		self.editDialog.show()
 
 	def buildContextMenu(self, obj):
 		self.MENU_contextMenu.clear()
@@ -1247,22 +1263,30 @@ class ManagerWindow(QMainWindow):
 		self.TBL_elements.setRowCount(0)
 
 		container = currentIndex.internalPointer().data(0)
+		els = []
 
-		if isinstance(container, Show) and container != env.show:
-			self.console.inject(['pop', '"{}"'.format(container.get('name'))])
-			self.elViewer = ElementViewWidget(container.getAllElements(), self).asDockable()
+		if isinstance(container, Show) and container.alias != env.getEnvironment('show'):
+			self.console.inject(['pop', '"{}"'.format(container.alias)])
+			els = container.getElements(
+				types=self.elTypeFilter if self.elTypeFilter else [''],
+				exclusive=True,
+				debug=True
+			)
+			# self.elViewer = ElementViewWidget(els, self).asDockable()
+			# self.addDockWidget(Qt.BottomDockWidgetArea, self.elViewer)
+		else:
+			els = container.getElements(
+				types=self.elTypeFilter if self.elTypeFilter else [''],
+				exclusive=True,
+				debug=True
+			)
 
-			self.addDockWidget(Qt.BottomDockWidgetArea, self.elViewer)
-			# self.removeDockWidget(self.elViewer)
-
-		for el in container.getElements():
-			if el.get('type') not in self.elTypeFilter:
-				continue
-
+		for el in els:
 			row = self.TBL_elements.rowCount()
 
 			self.TBL_elements.insertRow(row)
 
+			# TODO, make this a legit table item that has data per column
 			typeItem = ElementTableItem(el, 0, self)
 			nameItem = ElementTableItem(el, 1, self)
 
@@ -1281,8 +1305,8 @@ class ManagerWindow(QMainWindow):
 		self.dbLoc = dbLoc if dbLoc else QFileDialog.getOpenFileName(self, caption='Open Database File', filter='Database Files (*.json)')
 
 		if os.path.exists(self.dbLoc):
-			self.db = Database(str(self.dbLoc))
-			self.model = ShowModel(self.db.getShows())
+			env.setEnvironment('DB', self.dbLoc)
+			self.model = ShowModel(db.getShows())
 
 			self.VIEW_cols.setModel(self.model)
 			self.VIEW_cols.setSelectionModel(QItemSelectionModel(self.model))
@@ -1297,12 +1321,9 @@ class ManagerWindow(QMainWindow):
 
 	def handleDBReload(self):
 		QCoreApplication.instance().setOverrideCursor(QCursor(Qt.WaitCursor))
-		del self.db
-
-		self.db = Database(str(self.dbLoc))
-
-		self.model.setShows(self.db.getShows())
+		self.model.setShows(db.getShows())
 		self.handleDataSelection(QModelIndex(), QModelIndex())
+		self.permHandler = perms.PermissionHandler()
 		QCoreApplication.instance().restoreOverrideCursor()
 
 	def handleAbout(self):
@@ -1333,6 +1354,7 @@ class ManagerWindow(QMainWindow):
 if __name__ == '__main__':
 	app = QApplication(sys.argv)
 	dbPath = None
+	env.HAS_UI = True
 
 	app.setOrganizationName('Helix')
 	app.setApplicationName('Manager')
@@ -1371,14 +1393,5 @@ if __name__ == '__main__':
 	window.setDockOptions(QMainWindow.AnimatedDocks | QMainWindow.AllowNestedDocks | QMainWindow.AllowTabbedDocks)
 	window.setTabPosition(Qt.TopDockWidgetArea | Qt.BottomDockWidgetArea | Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea, QTabWidget.North)
 	app.restoreOverrideCursor()
-
-
-	from helix.manager.thumbnail import ThumbnailViewer
-	qd = QDockWidget('Thumbnail', parent=window)
-	tv = ThumbnailViewer()
-	qd.setWidget(tv)
-	window.addDockWidget(Qt.LeftDockWidgetArea, qd)
-
-	tv.setSequence(FrameSequence('/Volumes/Macintosh MD/Users/spaouellet/Documents/HelixFiles/work/testShow/sq0100/s0100_B/plate/render/tthomp27_s0601_s1000_v017_0000971.jpeg'))
 
 	sys.exit(app.exec_())

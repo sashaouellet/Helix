@@ -28,6 +28,20 @@ def getAllEnv():
 
 	return ret
 
+def getShow():
+	show = getEnvironment('show')
+
+	if show:
+		from helix.database.show import Show
+		return Show.fromPk(show)
+
+def getWorkingElement():
+	element = getEnvironment('element')
+
+	if element:
+		from helix.database.element import Element
+		return Element.fromPk(element)
+
 def getCreationInfo(format=True):
 	import getpass, datetime
 

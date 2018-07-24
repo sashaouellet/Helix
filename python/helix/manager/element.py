@@ -8,7 +8,7 @@ import helix
 import os
 
 class ElementNode(Node):
-	MAPPING = ['name', 'type', 'version', 'parent', 'author', 'creation', 'pubVersion']
+	MAPPING = ['name', 'type', 'version', 'author', 'creation', 'pubVersion']
 
 	def __init__(self, element):
 		self._element = element
@@ -19,21 +19,7 @@ class ElementNode(Node):
 
 	def data(self, col):
 		if col >= 0 and col < len(ElementNode.MAPPING):
-			dataType = ElementNode.MAPPING[col]
-
-			if dataType == 'parent':
-				container = self._element.getContainer()
-
-				if isinstance(container, tuple):
-					return '{}, {}'.format(*container)
-				else:
-					return container
-			elif dataType == 'creation':
-				dt = self._element.getCreation()
-
-				return dt.strftime('%m/%d/%y %I:%M %p')
-			else:
-				return self._element.get(dataType)
+			return getattr(self._element, ElementNode.MAPPING[col])
 
 class ElementSortFilterProxyModel(QSortFilterProxyModel):
 	def __init__(self, parent=None):
@@ -160,14 +146,10 @@ class ElementViewWidget(QWidget):
 	def __init__(self, elements, mode=PickMode.SINGLE, parent=None):
 		super(QWidget, self).__init__(parent)
 
-		from helix.database.database import ElementContainer
-
 		self.mode = mode
 
 		if isinstance(elements, list):
 			self.elements = elements
-		elif isinstance(elements, ElementContainer):
-			self.elements = elements.getElements()
 
 		self.buildUI()
 
@@ -215,7 +197,7 @@ class ElementViewWidget(QWidget):
 		# Filters
 		self.elFilters = []
 
-		for i, elType in enumerate(helix.database.database.Element.ELEMENT_TYPES):
+		for i, elType in enumerate(helix.database.element.Element.ELEMENT_TYPES):
 			chk = QCheckBox(elType, self)
 			chk.setCheckState(Qt.Checked)
 			chk.stateChanged.connect(self.handleFilterUpdate)
@@ -288,8 +270,6 @@ class ElementViewWidget(QWidget):
 
 			if idx.isValid():
 				elList.append(self.proxyModel.mapToSource(idx).internalPointer()._element.get('name'))
-
-		print elList
 
 		self.completer = QCompleter(elList, self.search)
 

@@ -12,7 +12,8 @@ class ConfigEditorDialog(QDialog):
 	def __init__(self, parent=None):
 		super(ConfigEditorDialog, self).__init__(parent)
 
-		self.canEditConfig = parent.permHandler.check('helix.config.edit', silent=True)
+		self.canEditConfig = parent.permHandler.check(PermissionNodes.nodes['EDIT_CONFIG'], silent=True)
+		print 'EDIT CONFIG', self.canEditConfig
 		self.configHandler = env.getConfig()
 
 		uic.loadUi(os.path.join(helix.root, 'ui', 'configEditor.ui'), self)

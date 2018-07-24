@@ -22,7 +22,7 @@ def utcToLocal(utcDT):
 
 	return localDT.replace(microsecond=utcDT.microsecond)
 
-def isSanitary(input):
+def isSanitary(input, minChars=2, maxChars=10):
 	"""Any letter character followed by any number of alphanumeric characters followed by
 	any character except non-alphanumeric and underscores, as long as the string is
 	not comprised of ONLY digits or ONLY dashes/underscores
@@ -69,30 +69,39 @@ def isSanitary(input):
 	    	reasons list is empty.
 	"""
 
-	regx = re.compile(r'^(?!^[\-_]*$|^[0-9_\-]+$)[a-zA-Z][a-zA-Z_\-0-9]*[^\W_]$')
-
-	if regx.match(input):
-		return (True, [])
-
+	# regx = re.compile(r'^(?!^[\-_]*$|^[0-9_\-]+$)[a-zA-Z][a-zA-Z_\-0-9]*[^\W_]$')
+	sanitary = True
 	reasons = []
+
+	# if regx.match(input):
+	# 	return (True, [])
 
 	# TODO: make reasons an enum
 
-	if len(input) < 2:
-		reasons.append('Must be at least 2 characters long')
+	if minChars != -1 and len(input) < minChars:
+		reasons.append('Must be at least {} character(s) long'.format(minChars))
+		sanitary = False
 
-	if re.compile(r'[\-_\d]+').match(input[0]):
+	if maxChars != -1 and len(input) > maxChars:
+		reasons.append('Must be less than {} character(s) long'.format(maxChars))
+		sanitary = False
+
+	if len(input) > 0 and re.compile(r'[\-_\d]+').match(input[0]):
 		reasons.append('Cannot start with a dash, underscore, or number')
+		sanitary = False
 
-	if re.compile(r'[\-_]+').match(input[-1]):
+	if len(input) > 0 and re.compile(r'[\-_]+').match(input[-1]):
 		reasons.append('Cannot end with a dash or underscore')
+		sanitary = False
 
 	if re.compile(r'\s').search(input):
 		reasons.append('Cannot contain spaces')
+		sanitary = False
 
 	if re.compile(r'[^a-zA-Z_\-0-9\s]').search(input):
 		reasons.append('Cannot contain special characters')
+		sanitary = False
 
 
-	return (False, reasons)
+	return (sanitary, reasons)
 

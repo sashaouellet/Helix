@@ -12,12 +12,13 @@ import helix.utils.utils as utils
 
 class PublishedFile(DatabaseObject):
 	TABLE='publishedFiles'
+	PK='id'
 
 	def __init__(self, elementName, elementType, filePath, show=None, sequence=None, shot=None, comment=None, fix=None, dummy=False):
 		self.table = PublishedFile.TABLE
 		self.elementName = elementName
 		self.elementType = elementType
-		self.show = show if show else env.show
+		self.show = show if show else env.getEnvironment('show')
 		self.elementId = None
 		self.fixId = None
 		self._exists = None
@@ -100,7 +101,7 @@ class PublishedFile(DatabaseObject):
 
 	@property
 	def pk(self):
-		return 'id'
+		return PublishedFile.PK
 
 	@staticmethod
 	def nextVersion(show, element):

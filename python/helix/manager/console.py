@@ -41,13 +41,13 @@ class Console(QDockWidget):
 		self.input.returnPressed.connect(self.handleInputSent)
 
 	def injectGetElement(self, element):
-		elType = element.get('type')
-		name = element.get('name')
-		parent = element.get('parent').split('/')
-		seq, shot = None, None
+		elType = element.type
+		name = element.name
+		seq = element.sequence
+		shot = element.shot
 
-		if len(parent) > 1:
-			seq, shot = parent
+		if name is None:
+			name = '-'
 
 		cmd = ['get', elType, name]
 
@@ -59,16 +59,17 @@ class Console(QDockWidget):
 			cmd.append('-s')
 			cmd.append(shot)
 
-		self.inject(cmd)
+		return self.inject(cmd)
 
 	def inject(self, cmd):
-		self.handleInputSent(' '.join(cmd))
+		return self.handleInputSent(' '.join(cmd))
 
 	def handleInputSent(self, text=''):
 		if not text:
 			text = str(self.input.text())
 
 		cmd = Command(text)
+
 		self.history.append(cmd)
 		self.historyPos = len(self.history)
 		self.printOutput()
@@ -77,7 +78,7 @@ class Console(QDockWidget):
 		stream = cStringIO.StringIO()
 		sys.stdout = stream
 
-		hxcmds.handleInput(str(cmd))
+		result = hxcmds.handleInput(str(cmd))
 
 		sys.stdout = stdout_
 		stdoutputs = stream.getvalue().split('\n')
@@ -91,6 +92,8 @@ class Console(QDockWidget):
 
 		self.output.verticalScrollBar().setValue(self.output.verticalScrollBar().maximum())
 		self.input.clear()
+
+		return result
 
 	def previousCommand(self):
 		if not self.history:

@@ -10,6 +10,7 @@ import helix.environment.environment as env
 
 class Fix(DatabaseObject):
 	TABLE = 'fixes'
+	PK = 'id'
 	STATUS = {
 		0: 'new',
 		1: 'assigned',
@@ -35,7 +36,7 @@ class Fix(DatabaseObject):
 		self.table = Fix.TABLE
 		self.title = title
 		self.body = body
-		self.show = show if show else env.show
+		self.show = show if show else env.getEnvironment('show')
 		self.sequence = sequence
 		self.shot = shot
 		self.elementName = elementName
@@ -147,7 +148,7 @@ class Fix(DatabaseObject):
 
 	@property
 	def pk(self):
-		return 'id'
+		return Fix.PK
 
 	@staticmethod
 	def nextFixNum(show=None):

@@ -6,38 +6,58 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>400</width>
-    <height>136</height>
+    <width>599</width>
+    <height>144</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>Create Show</string>
   </property>
   <layout class="QFormLayout" name="formLayout">
-   <item row="2" column="0">
+   <property name="fieldGrowthPolicy">
+    <enum>QFormLayout::ExpandingFieldsGrow</enum>
+   </property>
+   <property name="labelAlignment">
+    <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+   </property>
+   <item row="0" column="0">
     <widget class="QLabel" name="label">
      <property name="toolTip">
-      <string>The main display name of the show</string>
+      <string>The widely used &quot;internal&quot; name for the Show. The Show directory will be this. The alias is what primarily gets used when searching, and what will be visible a lot of the time. There are several restrictions including: no spaces and no special characters.</string>
      </property>
      <property name="text">
-      <string>Name</string>
+      <string>Alias</string>
+     </property>
+    </widget>
+   </item>
+   <item row="0" column="1">
+    <widget class="QLineEdit" name="LNE_alias">
+     <property name="maxLength">
+      <number>10</number>
+     </property>
+    </widget>
+   </item>
+   <item row="1" column="1">
+    <widget class="QLabel" name="LBL_issues">
+     <property name="text">
+      <string/>
+     </property>
+    </widget>
+   </item>
+   <item row="2" column="0">
+    <widget class="QLabel" name="label_2">
+     <property name="toolTip">
+      <string>The &quot;pretty&quot; name for general display purposes. This can contain spaces and special characters.</string>
+     </property>
+     <property name="text">
+      <string>Full name</string>
      </property>
     </widget>
    </item>
    <item row="2" column="1">
     <widget class="QLineEdit" name="LNE_name"/>
    </item>
-   <item row="3" column="0">
-    <widget class="QLabel" name="label_2">
-     <property name="toolTip">
-      <string>Internal keyword names for this show. This input only accepts a comma-separated list</string>
-     </property>
-     <property name="text">
-      <string>Alias(es)</string>
-     </property>
-    </widget>
-   </item>
-   <item row="4" column="1">
+   <item row="3" column="1">
     <layout class="QHBoxLayout" name="horizontalLayout">
      <item>
       <spacer name="horizontalSpacer">
@@ -67,9 +87,6 @@
       </widget>
      </item>
     </layout>
-   </item>
-   <item row="3" column="1">
-    <widget class="QLineEdit" name="LNE_aliases"/>
    </item>
   </layout>
  </widget>

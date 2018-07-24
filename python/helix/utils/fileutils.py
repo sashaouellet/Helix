@@ -29,6 +29,24 @@ def parseFilePath(filePath):
 
 	return (None, None, None)
 
+def linkPath(src, dest):
+	if os.path.isdir(src):
+		working_dir = os.getcwd()
+		os.chdir(src)
+
+		for root, dirs, files in os.walk('.'):
+			curdest = os.path.join(dest, root)
+			for d in dirs:
+				os.mkdir(os.path.join(curdest, d))
+			for f in files:
+				fromfile = os.path.join(root, f)
+				to = os.path.join(curdest, f)
+				os.link(fromfile, to)
+
+		os.chdir(working_dir)
+	else:
+		os.link(src, dest)
+
 def expand(path):
 	parts = path.split(os.path.sep)
 	newParts = []

@@ -10,10 +10,11 @@ from helix.utils.fileutils import SHOT_FORMAT, SEQUENCE_FORMAT
 
 class Take(DatabaseObject):
 	TABLE = 'takes'
+	PK = 'id'
 
 	def __init__(self, filePath, shot, sequence, show=None, author=None, comment=None, start=None, end=None, dummy=False):
 		self.table = Take.TABLE
-		self.show = show if show else env.show
+		self.show = show if show else env.getEnvironment('show')
 		self.sequence = sequence
 		self.shot = shot
 		self.file_path = filePath
@@ -101,7 +102,7 @@ class Take(DatabaseObject):
 
 	@property
 	def pk(self):
-		return 'id'
+		return Take.PK
 
 	@staticmethod
 	def nextTakeNum(show, sequence, shot):

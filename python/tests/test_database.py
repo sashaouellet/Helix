@@ -26,6 +26,8 @@ class DatabaseTestCase(unittest.TestCase):
 		self.assertEqual(show.release_path, '/tmp/helixTest/release/foobar')
 		self.assertEqual(show.author, 'spaouellet')
 
+		self.assertEqual(show, Show.fromPk(getattr(show, show.pk)))
+
 		self.assertEqual(show.get('alias'), 'foobar')
 
 		self.assertEqual(Sequence(100, 'foobar').id, show.getSequences([100])[0].id)
@@ -333,7 +335,7 @@ class DatabaseTestCase(unittest.TestCase):
 			Element('render', 'plate', 'foobar', shot=100, sequence=100, makeDirs=True).insert()
 			Fix('Test fix', 'This is the body', show='foobar').insert()
 
-			env.show = 'foobar'
+			env.setEnvironment('show', 'foobar')
 
 	@classmethod
 	def tearDownClass(cls):
