@@ -1,4 +1,9 @@
 # Helix
-This comprehensive system is an ongoing project that I am designing and building as a part of a collaborative class between Visual Effects, Animation, and Film classes. Together, these classes will produce 2 short films so I have been tasked with the laying out the pipeline architecture for both films.
+A show and asset management system for VFX/Animation productions.
  
-This tool is being designed with other projects in mind, so that it can scale appropriately from large group films to smaller senior studio films.
+## Overview
+[![Documentation Status](https://readthedocs.org/projects/helix/badge/?version=latest)](https://helix.readthedocs.io/en/latest/?badge=latest)
+
+## Documentation
+
+The main docs can be found [here](https://helix.readthedocs.io/en/dev/) with a helpful new-user startup guide [here](https://helix.readthedocs.io/en/dev/userguide/setting-up.html).
