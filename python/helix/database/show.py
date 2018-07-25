@@ -1,3 +1,11 @@
+"""
+.. module:: show
+   :synopsis: Represents the data structure of a Show in the database
+
+.. moduleauthor:: Sasha Ouellet <sashaouellet@gmail.com>
+
+"""
+
 import os
 
 from helix.database.elementContainer import ElementContainer
@@ -10,6 +18,26 @@ class Show(ElementContainer):
 	PK='alias'
 
 	def __init__(self, alias, name=None, author=None, makeDirs=False, dummy=False):
+		"""Construct a new show. Based on the given parameter values, this
+		may equate to a show that already exists in the DB, or will construct
+		an entirely new instance.
+		
+		Args:
+		    alias (str): The alias (internal name) of the show
+		    name (str, optional): The long, descriptive name
+		    author (str, optional): The creator of the show, defaults to the
+		    	current user
+		    makeDirs (bool, optional): Whether to make the show's directories on
+		    	disk, if they don't already exist.
+		    dummy (bool, optional): Whether this is a throwaway instance or not.
+		    	Dummy instances are meant to be "unmapped" into since they will
+		    	have no attributes set.
+		
+		Raises:
+		    ValueError: If the alias specified does not meet the sanitation criteria,
+		    	or if the given user (if any provided) does not exist in the database
+		    	already.
+		"""
 		self.table = Show.TABLE
 
 		if dummy:
@@ -21,9 +49,6 @@ class Show(ElementContainer):
 			raise ValueError('Invalid alias specified:' + '\n'.join(reasons))
 
 		self.alias = alias
-
-		if len(self.alias) > 10:
-			raise ValueError('Alias can\'t be longer than 10 characters')
 
 		self._exists = None
 
