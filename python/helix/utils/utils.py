@@ -105,3 +105,15 @@ def isSanitary(input, minChars=2, maxChars=10):
 
 	return (sanitary, reasons)
 
+def capitalize(text):
+	parts = text.split()
+	ret = []
+
+	for p in parts:
+		if p and len(p) > 1:
+			ret.append(p[0].upper() + p[1:])
+		else:
+			ret.append(p[0].upper())
+
+	return ' '.join(ret)
+

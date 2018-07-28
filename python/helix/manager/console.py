@@ -33,9 +33,10 @@ class Console(QDockWidget):
 		self.layout.addWidget(self.output)
 		self.layout.addWidget(self.input)
 		self.widget.setLayout(self.layout)
+		self.setFloating(True)
 
 		self.setWidget(self.widget)
-		self.setMinimumSize(500, 800)
+		self.setMinimumSize(300, 50)
 
 	def makeConnections(self):
 		self.input.returnPressed.connect(self.handleInputSent)

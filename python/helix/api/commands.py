@@ -8,6 +8,7 @@ from helix.database.shot import Shot
 from helix.database.element import Element
 from helix.api.exceptions import *
 from helix.environment.permissions import PermissionHandler
+import helix.utils.fileutils as fileutils
 
 dbLoc = env.getEnvironment('db')
 
@@ -148,38 +149,71 @@ def mod(attribute, value=None):
 		perms.check('helix.mod.get')
 		print element.get(attribute)
 
-def importEl(dir, workFilePath, elType, name=None, sequence=None, shot=None, importAll=False):
-	perms.check('helix.import.element')
+def importEl(dir, elType, name=None, sequence=None, shot=None, clipName=None, overwriteOption=0):
+	"""Imports the files in the given directory into an element's work directory. This element
+	either already exists (based on name/elType/sequence/shot) or a new one will be made with
+	the given parameters.
 
-	if not os.path.exists(dir):
-		raise ImportError('Directory specified does not exist: {}'.format(dir))
+	Args:
+	    dir (str): Path to the directory to import files from into the element
+	    name (str): The name of the element to import to/create.
+	    elType (str): The element type of the element to import to/create.
+	    sequence (int, optional): The sequence number of the element to import to/create. Defaults
+	    	to a show-level element.
+	    shot (int, optional): The shot number of the element to import to/create. Defaults to a
+	    	show-level element.
+	    clipName (str, optional): The clip name of the specified shot number where the element will
+	    	imported to/created in.
+	    overwriteOption (int, optional): The action to take when encountering files of the same name
+	    	that already exist when importing into an already existing element.
+
+	    	0: DEFAULT. Duplicate files will be overwritten by the incoming source.
+	    	1: Version up. Incoming source files will be appended with a number.
+	    	2: Skip. Incoming source files will not be imported if they are duplicates.
+
+	Raises:
+	    ImportError: If the specified directory does not exist or is not a directory.
+	"""
+	perms.check('helix.import.element')
 
 	if not os.path.isdir(dir):
 		raise ImportError('Not a directory: {}'.format(dir))
 
-	if not os.path.exists(workFilePath):
-		raise ImportError('Work file specified does not exist: {}'.format(workFilePath))
+	el = Element(name, elType, show=env.getEnvironment('show'), sequence=sequence, shot=shot, clipName=clipName, makeDirs=True)
 
-	baseName, _, _ = fileutils.parseFilePath(workFilePath)
-	name = name if name else baseName
-	el = mke(elType, name, sequence, shot)
+	if not el.exists():
+		el.insert()
 
-	if fileutils.pathIsRelativeTo(workFilePath, dir):
-		relPath = os.path.relpath(workFilePath, dir)
-		dest = os.path.join(el.getDiskLocation(), relPath)
+	working_dir = os.getcwd()
+	os.chdir(dir)
 
-		if not os.path.exists(os.path.dirname(dest)):
-			os.makedirs(os.path.dirname(dest))
+	for root, dirs, files in os.walk('.'):
+		curdest = os.path.join(el.work_path, root)
 
-		shutil.copy(workFilePath, dest)
-		el.set('workFile', WorkFile(path=dest))
-	else:
-		shutil.copy(workFilePath, el.getDiskLocation())
-		el.set('workFile', WorkFile(path=os.path.join(el.getDiskLocation(), os.path.split(workFilePath)[1])))
+		for d in dirs:
+			dirDest = os.path.join(curdest, d)
 
-	if importAll:
-		fileutils.copytree(dir, el.getDiskLocation(), ignore=shutil.ignore_patterns(os.path.split(workFilePath)[1]))
+			if not os.path.isdir(dirDest):
+				os.mkdir(dirDest)
+		for f in files:
+			fromfile = os.path.join(root, f)
+			to = os.path.join(curdest, f)
 
+			if os.path.exists(to):
+				# Evaluate based on overwriteOption
+				if overwriteOption == 0: # Overwrite
+					shutil.copy2(fromfile, to)
+				elif overwriteOption == 1: # Version up
+					print to
+					shutil.copy2(fromfile, fileutils.getNextVersionOfFile(to))
+				else: # Skip
+					if env.DEBUG:
+						print 'Skipped copying {}'.format(fromfile)
+					continue
+			else:
+				shutil.copy2(fromfile, to)
+
+	os.chdir(working_dir)
 
 def clone(show=None, sequence=None, shot=None):
 	# TODO: consider an option for also cloning the work and/or release dirs of the element
@@ -544,15 +578,15 @@ def main(cmd, argv):
 			print 'Please pop into a show first'
 			return
 
-		parser = argparse.ArgumentParser(prog='import', description='Imports a directory and specific file to become a new element')
+		parser = argparse.ArgumentParser(prog='import', description='Imports a directory to become a new element if it doesn\'t exist, or into an existing element.')
 
-		parser.add_argument('dir', help='The full path to the directory of files associated with the element about to be created. The work file should be somewhere within this directory.')
-		parser.add_argument('workFilePath', help='The full path to the element\'s associated work file. The work file is what users will edit to produce the element.')
-		parser.add_argument('elType', help='The element type the new element will be')
-		parser.add_argument('--name', '-n', help='The name of the element. By default will use the name of the specified "work file" as a guess.', default=None, nargs='?')
-		parser.add_argument('--sequence', '-sq', default=None, help='The sequence number to get elements from')
-		parser.add_argument('--shot', '-s', default=None, help='The shot number to get elements from')
-		parser.add_argument('--importAll', '-i', action='store_true', help='By default, all the files from "dir" will not be imported into the new element\'s directory. Include this flag to also have all of those files moved over.')
+		parser.add_argument('dir', help='The full path to the directory of files associated with the element to import into or create.')
+		parser.add_argument('elType', help='The element type of the element')
+		parser.add_argument('--name', '-n', help='The name of the element', default=None, nargs='?')
+		parser.add_argument('--sequence', '-sq', default=None, help='The sequence number of the element')
+		parser.add_argument('--shot', '-s', default=None, help='The shot number of the element')
+		parser.add_argument('--clipName', '-c', default=None, help='The clip name of the element\'s shot')
+		parser.add_argument('--overwriteOption', '-o', default=0, type=int, choices=[0, 1, 2], help='When encountering duplicate files on import for an element that already exists, 0 will overwrite, 1 will version up the incoming file, and 2 will skip the file.')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 

@@ -19,7 +19,7 @@ def pathIsRelativeTo(path, dir):
 
 def parseFilePath(filePath):
 	fileName = os.path.split(filePath)[1]
-	match = re.match(r'^([\w\-_]+)([\._]v*(\d+))?\..+$', fileName)
+	match = re.match(r'^([\w\-_]+?)([\._]?v?(\d+))\..+$', fileName)
 
 	if match:
 		_, ext = os.path.splitext(fileName)
@@ -27,7 +27,7 @@ def parseFilePath(filePath):
 		# (baseName without version number or ext, versionString, ext)
 		return (match.group(1), match.group(3), ext)
 
-	return (None, None, None)
+	return (os.path.splitext(fileName)[0], '', os.path.splitext(fileName)[1])
 
 def linkPath(src, dest):
 	if os.path.isdir(src):
@@ -46,6 +46,25 @@ def linkPath(src, dest):
 		os.chdir(working_dir)
 	else:
 		os.link(src, dest)
+
+def getNextVersionOfFile(file, asPath=True):
+	baseName, _, ext = parseFilePath(file)
+	print 'bn', baseName, 'ext', ext
+	fileRegexPattern = baseName + '_?([0-9]+)' + ext
+	regex = re.compile(fileRegexPattern)
+	fileDir = os.path.dirname(file)
+	files = filter(lambda f: regex.match(f), os.listdir(fileDir))
+	vers = sorted([regex.match(f).group(1) for f in files], key=lambda f: int(f))
+
+	num = int(vers[-1]) + 1 if vers else 1
+	padding = len(vers[-1]) if vers else 3
+
+	if not asPath:
+		return (num, padding)
+	else:
+		baseDir, _ = os.path.split(file)
+
+		return os.path.join(baseDir, baseName + '_' + str(num).zfill(padding) + ext)
 
 def expand(path):
 	parts = path.split(os.path.sep)

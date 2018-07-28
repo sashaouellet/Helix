@@ -3,12 +3,13 @@ from PyQt4.QtGui import *
 from PyQt4 import uic
 
 from helix.utils.qtutils import Node
+import helix.utils.utils as utils
 import helix
 
 import os
 
 class ElementNode(Node):
-	MAPPING = ['name', 'type', 'version', 'author', 'creation', 'pubVersion']
+	MAPPING = ['name', 'type', 'version', 'parent', 'author', 'creation', 'pubVersion']
 
 	def __init__(self, element):
 		self._element = element
@@ -25,7 +26,7 @@ class ElementSortFilterProxyModel(QSortFilterProxyModel):
 	def __init__(self, parent=None):
 		super(ElementSortFilterProxyModel, self).__init__(parent)
 
-		self.elFilters = helix.database.database.Element.ELEMENT_TYPES
+		self.elFilters = helix.database.element.Element.ELEMENT_TYPES
 		self.onlyPublished = False
 		self.userFilter = '*'
 
@@ -33,7 +34,7 @@ class ElementSortFilterProxyModel(QSortFilterProxyModel):
 		typeIndex = self.sourceModel().index(sourceRow, ElementNode.MAPPING.index('type'), sourceParent)
 		publishedIndex = self.sourceModel().index(sourceRow, ElementNode.MAPPING.index('pubVersion'), sourceParent)
 		authorIndex = self.sourceModel().index(sourceRow, ElementNode.MAPPING.index('author'), sourceParent)
-		publishCond = (self.onlyPublished and self.sourceModel().data(publishedIndex) != 'None') or not self.onlyPublished
+		publishCond = (self.onlyPublished and int(self.sourceModel().data(publishedIndex)) != 0) or not self.onlyPublished
 
 		return self.sourceModel().data(typeIndex) in self.elFilters and publishCond and (self.sourceModel().data(authorIndex) == self.userFilter or self.userFilter == '*')
 
@@ -143,21 +144,22 @@ class PickMode():
 	MULTI = 1
 
 class ElementViewWidget(QWidget):
-	def __init__(self, elements, mode=PickMode.SINGLE, parent=None):
+	def __init__(self, elements=[], mode=PickMode.SINGLE, parent=None):
 		super(QWidget, self).__init__(parent)
 
 		self.mode = mode
-
-		if isinstance(elements, list):
-			self.elements = elements
+		self.elements = elements
 
 		self.buildUI()
 
 	def asDockable(self):
-		qdock = QDockWidget('Element Viewer', self.parent())
+		qdock = QDockWidget('Global Asset Viewer', self.parent())
 		qdock.setWidget(self)
 
 		return qdock
+
+	def setElements(self, elements):
+		self.model.setElements(elements)
 
 	def buildUI(self):
 		self.proxyModel = ElementSortFilterProxyModel()
@@ -191,14 +193,14 @@ class ElementViewWidget(QWidget):
 		self.elementsView.setHorizontalHeader(hHeader)
 
 		# Search bar
-		self.search.setPlaceholderText('Find element...')
+		self.search.setPlaceholderText('Find asset...')
 		self.setupSearchCompleter()
 
 		# Filters
 		self.elFilters = []
 
 		for i, elType in enumerate(helix.database.element.Element.ELEMENT_TYPES):
-			chk = QCheckBox(elType, self)
+			chk = QCheckBox(utils.capitalize(elType), self)
 			chk.setCheckState(Qt.Checked)
 			chk.stateChanged.connect(self.handleFilterUpdate)
 			self.elFilters.append(chk)
@@ -237,7 +239,7 @@ class ElementViewWidget(QWidget):
 		keepEls = []
 		for filter in self.elFilters:
 			if filter.checkState() == Qt.Checked:
-				keepEls.append(filter.text())
+				keepEls.append(str(filter.text()).lower())
 
 		self.proxyModel.updateElFilter(keepEls)
 
@@ -248,7 +250,7 @@ class ElementViewWidget(QWidget):
 			idx = self.proxyModel.index(i, 0)
 
 			if idx.isValid():
-				name = self.proxyModel.mapToSource(idx).internalPointer()._element.get('name')
+				name = self.proxyModel.mapToSource(idx).internalPointer()._element.name
 
 				if name.lower() == str(text).lower():
 					selection = idx
@@ -269,7 +271,7 @@ class ElementViewWidget(QWidget):
 			idx = self.proxyModel.index(i, 0)
 
 			if idx.isValid():
-				elList.append(self.proxyModel.mapToSource(idx).internalPointer()._element.get('name'))
+				elList.append(self.proxyModel.mapToSource(idx).internalPointer()._element.name)
 
 		self.completer = QCompleter(elList, self.search)
 

@@ -6,134 +6,25 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>673</width>
-    <height>360</height>
+    <width>707</width>
+    <height>464</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Import Element</string>
+   <string>Import Asset</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <layout class="QFormLayout" name="formLayout_2">
-     <property name="fieldGrowthPolicy">
-      <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
+    <widget class="QLabel" name="label">
+     <property name="text">
+      <string>If the specified asset does not exist in the given container, a new asset will be created with the contents of the given folder copied to its work directory. 
+
+Otherwise, the contents of the folder will be copied to the existing asset.</string>
      </property>
-     <item row="0" column="0">
-      <widget class="QLabel" name="LBL_folder">
-       <property name="toolTip">
-        <string>The folder where all the element files exist. When choosing the &quot;work file&quot; later, the work file must be somewhere within this folder or any of its subfolders.</string>
-       </property>
-       <property name="text">
-        <string>Folder</string>
-       </property>
-      </widget>
-     </item>
-     <item row="0" column="1">
-      <layout class="QHBoxLayout" name="horizontalLayout_5">
-       <item>
-        <widget class="QLineEdit" name="LNE_folder"/>
-       </item>
-       <item>
-        <widget class="QPushButton" name="BTN_folder">
-         <property name="text">
-          <string>...</string>
-         </property>
-        </widget>
-       </item>
-      </layout>
-     </item>
-     <item row="2" column="0">
-      <widget class="QLabel" name="LBL_file">
-       <property name="toolTip">
-        <string>This is the actual file that represents the element, i.e. a Maya scene file, Nuke script, etc.</string>
-       </property>
-       <property name="text">
-        <string>Work File</string>
-       </property>
-      </widget>
-     </item>
-     <item row="2" column="1">
-      <layout class="QHBoxLayout" name="horizontalLayout_2">
-       <item>
-        <widget class="QLineEdit" name="LNE_file"/>
-       </item>
-       <item>
-        <widget class="QPushButton" name="BTN_file">
-         <property name="text">
-          <string>...</string>
-         </property>
-        </widget>
-       </item>
-      </layout>
-     </item>
-     <item row="3" column="0">
-      <widget class="QLabel" name="LBL_name">
-       <property name="toolTip">
-        <string>The name of the element you want to create.</string>
-       </property>
-       <property name="text">
-        <string>Element Name</string>
-       </property>
-      </widget>
-     </item>
-     <item row="3" column="1">
-      <widget class="QLineEdit" name="LNE_name"/>
-     </item>
-     <item row="4" column="1">
-      <widget class="QCheckBox" name="CHK_nameless">
-       <property name="toolTip">
-        <string>In most cases, elements should have names. However, it may make more sense for some elements to live directly underneath their type folder, rather than an additional subfolder. When set to &quot;nameless,&quot; the element will be given an internal name. This is useful for elements like ingested background plates.</string>
-       </property>
-       <property name="text">
-        <string>Nameless</string>
-       </property>
-      </widget>
-     </item>
-     <item row="5" column="0">
-      <widget class="QLabel" name="LBL_type">
-       <property name="toolTip">
-        <string>The type of the element you want to create.</string>
-       </property>
-       <property name="text">
-        <string>Element Type</string>
-       </property>
-      </widget>
-     </item>
-     <item row="5" column="1">
-      <layout class="QHBoxLayout" name="horizontalLayout_6">
-       <item>
-        <widget class="QComboBox" name="CMB_type"/>
-       </item>
-       <item>
-        <spacer name="horizontalSpacer_4">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>40</width>
-           <height>20</height>
-          </size>
-         </property>
-        </spacer>
-       </item>
-      </layout>
-     </item>
-     <item row="1" column="1">
-      <widget class="QCheckBox" name="CHK_importAll">
-       <property name="toolTip">
-        <string>By default, all files/folders from the selected folder will also be imported into the new element's folder. Uncheck this if you only want the selected &quot;work file&quot; to be imported.</string>
-       </property>
-       <property name="text">
-        <string>Import all files and folders from the above folder</string>
-       </property>
-       <property name="checked">
-        <bool>true</bool>
-       </property>
-      </widget>
-     </item>
-    </layout>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
    </item>
    <item>
     <widget class="Line" name="line">
@@ -143,58 +34,158 @@
     </widget>
    </item>
    <item>
-    <widget class="QLabel" name="LBL_container">
-     <property name="text">
-      <string>Container:</string>
+    <widget class="QGroupBox" name="groupBox">
+     <property name="title">
+      <string>Import options</string>
      </property>
+     <layout class="QFormLayout" name="formLayout">
+      <property name="fieldGrowthPolicy">
+       <enum>QFormLayout::ExpandingFieldsGrow</enum>
+      </property>
+      <item row="0" column="0">
+       <widget class="QLabel" name="LBL_folder">
+        <property name="toolTip">
+         <string>The folder where all the element files exist. When choosing the &quot;work file&quot; later, the work file must be somewhere within this folder or any of its subfolders.</string>
+        </property>
+        <property name="text">
+         <string>Folder</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <layout class="QHBoxLayout" name="LAY_folderSelect"/>
+      </item>
+      <item row="1" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_2">
+        <item>
+         <widget class="QRadioButton" name="RDO_overwrite">
+          <property name="text">
+           <string>Overwrite</string>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QRadioButton" name="RDO_versionUp">
+          <property name="text">
+           <string>Version up</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QRadioButton" name="RDO_skip">
+          <property name="text">
+           <string>Skip</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="horizontalSpacer_3">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="label_3">
+        <property name="text">
+         <string>Duplicate files</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
     </widget>
    </item>
    <item>
-    <layout class="QHBoxLayout" name="horizontalLayout_3">
-     <item>
-      <widget class="QLabel" name="LBL_show">
-       <property name="text">
-        <string>Show:</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QComboBox" name="CMB_show"/>
-     </item>
-     <item>
-      <widget class="QLabel" name="LBL_seq">
-       <property name="text">
-        <string>Sequence:</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QComboBox" name="CMB_seq"/>
-     </item>
-     <item>
-      <widget class="QLabel" name="LBL_shot">
-       <property name="text">
-        <string>Shot:</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QComboBox" name="CMB_shot"/>
-     </item>
-     <item>
-      <spacer name="horizontalSpacer_2">
-       <property name="orientation">
-        <enum>Qt::Horizontal</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>40</width>
-         <height>20</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
-    </layout>
+    <widget class="QGroupBox" name="groupBox_2">
+     <property name="title">
+      <string>Asset options</string>
+     </property>
+     <layout class="QFormLayout" name="formLayout_3">
+      <property name="fieldGrowthPolicy">
+       <enum>QFormLayout::ExpandingFieldsGrow</enum>
+      </property>
+      <property name="labelAlignment">
+       <set>Qt::AlignBottom|Qt::AlignRight|Qt::AlignTrailing</set>
+      </property>
+      <item row="0" column="0">
+       <widget class="QLabel" name="LBL_name">
+        <property name="toolTip">
+         <string>The name of the element you want to create.</string>
+        </property>
+        <property name="text">
+         <string>Name</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QLineEdit" name="LNE_name"/>
+      </item>
+      <item row="1" column="1">
+       <widget class="QCheckBox" name="CHK_nameless">
+        <property name="toolTip">
+         <string>In most cases, elements should have names. However, it may make more sense for some elements to live directly underneath their type folder, rather than an additional subfolder. When set to &quot;nameless,&quot; the element will be given an internal name. This is useful for elements like ingested background plates.</string>
+        </property>
+        <property name="text">
+         <string>Nameless</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="LBL_type">
+        <property name="toolTip">
+         <string>The type of the element you want to create.</string>
+        </property>
+        <property name="text">
+         <string>Type</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QComboBox" name="CMB_type"/>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="LBL_show">
+        <property name="text">
+         <string>Show:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QComboBox" name="CMB_show"/>
+      </item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="LBL_seq">
+        <property name="text">
+         <string>Sequence:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <widget class="QComboBox" name="CMB_seq"/>
+      </item>
+      <item row="5" column="0">
+       <widget class="QLabel" name="LBL_shot">
+        <property name="text">
+         <string>Shot:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="1">
+       <widget class="QComboBox" name="CMB_shot"/>
+      </item>
+     </layout>
+    </widget>
    </item>
    <item>
     <layout class="QHBoxLayout" name="horizontalLayout">

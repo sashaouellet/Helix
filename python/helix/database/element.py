@@ -13,14 +13,71 @@ import helix.utils.fileutils as fileutils
 from helix.api.exceptions import PublishError
 
 class Element(DatabaseObject):
+
+	"""Externally referred to as "Assets", Elements are the children of ElementContainers
+	(Shows, Sequences, Shots). They represent any particular asset that can be composed
+	together in a shot to produce the final look of the shot. Additionally, an Element
+	can be used to create other assets (i.e. texture for a prop or prop in a set).
+
+	Most elements will live under the "Show" scope, unless specifically needed at a more
+	granular level. For example, a "plate" element would not live at the Show level,
+	since it makes more sense to be tied to a shot - it is the plate for that specific
+	shot. The same is true for a "camera" element - it should be tied to a specific shot.
+
+	At an element's work tree location, all files relevant to construction that particular
+	element exist. For example, a "prop" element may have a Maya project directory
+	structure, some test files, and anything else the artist needs to produce this element.
+
+	At an element's release tree location, all published versions of the element's outcome
+	exist. In reality, this is also whatever is chosen by the artist but the theory is that
+	for the example "prop" element, the artist would publish versions of an .OBJ (or whatever
+	format is chosen).
+
+	Attributes:
+	    CAMERA (str): A camera, probably producing an .FBX of the camera location/animation. Usually a part of the shot scope.
+	    CHARACTER (str): A character. the model and/or rig could fall under this element type.
+	    COMP (str): A Nuke composite. Usually part of the shot scope.
+	    EFFECT (str): An effect/simulation, i.e. cloth or hair sim, pyro sim, etc.
+	    LIGHT (str): A light or group of lights (light rig). You might produce a sequence scoped light rig that gets used by default, then build shot scoped light rig overrides during the shot lighting stage.
+	    PLATE (str): Represents any background element. Could be footage, a matte painting, etc.
+	    PROP (str): A model
+	    SET (str): An entire set where most other elements will eventually be placed into. The set element would probably be made during the layout stage and would be used for set dressing/final shot creation.
+	    TEXTURE (str): Texture map (even a texture set) grouped for a specific other element (i.e a prop or character)
+
+	    ELEMENT_TYPES (list): The list of all the aforementioned element types.
+	    STATUS (dict): Maps status number to its string equivalent. Represents the stage within the pipeline that this element's production is in.
+		TABLE (str): Description
+	    PK (str): Description
+
+	    assigned_to (str): The user the element is assigned to.
+	    author (str): The user the element was created by.
+	    creation (datetime): When the element was created.
+	    name (str): The name of the element. Could be considered "nameless" (only for shot scoped elements). In this case, the element is named after the sequence and shot it's a part of.
+	    pubVersion (int): The current version the published files for the element point to. This number is affected by new version and rollbacks.
+	    release_path (str): The path to the element's directory in the release tree of the show.
+	    sequence (int): The sequence number this element is under the scope of. Could be None if it's a show scoped element.
+	    sequenceId (str): The sequence id (PK of the sequence in the sequence table). Could be None if it's a show scoped element.
+	    shot (int): The shot number this element is under the scope of. Could be None if it's not in the shot scope.
+	    shot_clipName (str): The shot clip name for the shot this element is under the scope of. Could be None if it's not in the shot scope.
+	    shotId (str): The shot id (PK of the shot in the shot table). Could be None if it's not in the shot scope.
+	    show (str): The alias of the show (PK of the show in the show table) this element is under. All elements are at the very least in the show scope.
+	    status (str): The status of this element's production. See STATUS.
+	    table (str): The table this element exists in the database. Should be equal to Element.TABLE.
+	    thumbnail (str): Path to a thumbnail image showcasing what this element looks like.
+	    type (str): One of the element types described above.
+	    version (int): The current version that the element is being modified as in the work tree. The next publish of this element will produce this number.
+	    work_path (str): The path to the element's directory in the work tree of the show.
+
+	"""
+
 	TABLE = 'elements'
 	PK = 'id'
 	STATUS = {
-		0: 'new',
-		1: 'assigned',
-		2: 'ip',
-		3: 'review',
-		4: 'done'
+		0: 'new',		# The element has just been created
+		1: 'assigned',	# The element is assigned to an artist
+		2: 'ip',		# The assigned artist has started working on the element
+		3: 'review',	# The element may toggle back and forth between 'ip' and 'review' depending on dailies and needs of the production. Review indicates the element is finished as of now and needs to be reviewed.
+		4: 'done'		# The production of the element is completely finished.
 	}
 	SET = 'set'
 	LIGHT = 'light'
@@ -36,14 +93,14 @@ class Element(DatabaseObject):
 	def __init__(self, name, elType, show=None, sequence=None, shot=None, clipName=None, author=None, makeDirs=False, dummy=False):
 		self.table = Element.TABLE
 
-		if name:
+		if name is not None:
 			sanitary, reasons = utils.isSanitary(name)
 
 			if not sanitary:
 				raise ValueError('Invalid element name specified:' + '\n'.join(reasons))
 
 		self.name = name
-		self.type = elType
+		self.type = elType.lower()
 		self.show = show if show else env.getEnvironment('show')
 		self.sequence = sequence
 		self.shot = shot
@@ -56,7 +113,7 @@ class Element(DatabaseObject):
 			return
 
 		if name is None:
-			if not shot or not sequence:
+			if shot is None or sequence is None:
 				raise ValueError('Element\'s name can only be None (considered nameless) if shot and sequence are also specified')
 			else:
 				self.name = '_{}{}{}'.format(
@@ -65,13 +122,11 @@ class Element(DatabaseObject):
 						clipName if clipName else ''
 					)
 
-		if not elType:
+		if not self.type:
 			raise ValueError('Element\'s type can\'t be None')
 
-		self.elType = elType.lower()
-
-		if self.elType not in Element.ELEMENT_TYPES:
-			raise ValueError('Invalid element type: {}. Must be one of: {}'.format(self.elType, ', '.join(Element.ELEMENT_TYPES)))
+		if self.type not in Element.ELEMENT_TYPES:
+			raise ValueError('Invalid element type: {}. Must be one of: {}'.format(self.type, ', '.join(Element.ELEMENT_TYPES)))
 
 		if not self.show:
 			raise ValueError('Tried to fallback to environment-set show, but it was null.')
@@ -453,6 +508,15 @@ class Element(DatabaseObject):
 	@property
 	def pk(self):
 		return Element.PK
+
+	@property
+	def parent(self):
+		if self.shotId is not None:
+			return Shot.fromPk(self.shotId)
+		elif self.sequenceId is not None:
+			return Sequence.fromPk(self.sequenceId)
+		else:
+			return Show.fromPk(self.show)
 
 	@staticmethod
 	def dummy():

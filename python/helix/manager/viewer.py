@@ -123,14 +123,12 @@ class ShowModel(QAbstractItemModel):
 		return QModelIndex()
 
 class ElementTableItem(QLabel):
-	DATA_MAPPING = ['type', 'name']
-
-	def __init__(self, el, col, parent):
+	def __init__(self, elementId, data, parent):
 		super(ElementTableItem, self).__init__('')
 
 		self.parent = parent
-		self.element = el
-		self.setText(getattr(self.element, ElementTableItem.DATA_MAPPING[col]))
+		self.elementId = elementId
+		self.setText(str(data))
 
 		self.explorerAction = QAction('Open work directory', self)
 		self.exploreReleaseAction = QAction('Open release directory', self)
@@ -165,13 +163,16 @@ class ElementTableItem(QLabel):
 		fileutils.openPathInExplorer(path)
 
 	def handlePublish(self):
-		env.setEnvironment('element', self.element.id)
-		publishDialog = PublishDialog(self.parent, self.element)
-		publishDialog.exec_()
+		env.setEnvironment('element', self.elementId)
+		PublishDialog(self.parent, self.element).exec_()
 
 	def handleRollback(self):
-		env.setEnvironment('element', self.element.id)
+		env.setEnvironment('element', self.elementId)
 		self.parent.rollbackDialog.show(self.element)
+
+	@property
+	def element(self):
+		return Element.fromPk(self.elementId)
 
 class PublishDialog(QDialog):
 	def __init__(self, parent, element):
@@ -647,12 +648,13 @@ class ImportElementDialog(QDialog):
 		super(ImportElementDialog, self).__init__(parent)
 
 	def makeConnections(self):
+		self.CMB_type.addItems(Element.ELEMENT_TYPES)
+		self.CMB_show.addItems([s.alias for s in db.getShows()])
+
 		self.BTN_cancel.clicked.connect(self.reject)
 		self.BTN_import.clicked.connect(self.accept)
-		self.BTN_file.clicked.connect(self.handleFileImport)
-		self.BTN_folder.clicked.connect(self.handleFolderImport)
-		self.LNE_folder.textChanged.connect(self.handleFolderChange)
-		self.LNE_file.textChanged.connect(self.handleFileChange)
+		# self.BTN_folder.clicked.connect(self.handleFolderImport)
+		# self.LNE_folder.textChanged.connect(self.handleFolderChange)
 		self.CHK_nameless.clicked.connect(self.handleNamelessToggle)
 		self.CMB_show.currentIndexChanged.connect(self.populateSeqAndShot)
 		self.CMB_seq.currentIndexChanged.connect(self.populateShots)
@@ -667,23 +669,18 @@ class ImportElementDialog(QDialog):
 		seq = str(self.CMB_seq.currentText())
 
 		if not seq:
-			self.CMB_shot.addItems([])
 			return
 
-		seq = env.show.getSequence(seq)
-		shots = [str(s.get('num')) for s in seq.getShots()]
+		shots = [str(s.num) for s in self._show.getShots(seqs=[int(seq)])]
 
 		self.CMB_shot.addItems(sorted(shots, key=lambda s: int(s)))
-		self.CMB_shot.setCurrentIndex(0)
 
 	def populateSeqAndShot(self):
 		self.CMB_seq.clear()
-		cmds.pop(str(self.CMB_show.currentText()))
+		self._show = Show(str(self.CMB_show.currentText()))
+		seqs = [str(s.num) for s in self._show.getSequences()]
 
-		seqs = [str(s.get('num')) for s in env.show.getSequences()]
-
-		self.CMB_seq.addItems(sorted(seqs))
-		self.CMB_seq.setCurrentIndex(0)
+		self.CMB_seq.addItems(sorted(seqs, key=lambda s: int(s)))
 		self.populateShots()
 
 	def handleFileImport(self):
@@ -728,63 +725,17 @@ class ImportElementDialog(QDialog):
 		super(ImportElementDialog, self).accept()
 
 	def show(self):
-		self.LNE_folder.setText('')
-		self.CHK_importAll.setEnabled(False)
-
-		self.LBL_file.setEnabled(False)
-		self.LNE_file.setEnabled(False)
-
-		self.LBL_name.setEnabled(False)
-		self.LNE_name.setEnabled(False)
-		self.LNE_name.setText('')
-		self.CHK_nameless.setEnabled(False)
-
-		self.LBL_type.setEnabled(False)
-		self.CMB_type.setEnabled(False)
-		self.CMB_type.clear()
-		self.CMB_type.addItems(Element.ELEMENT_TYPES)
+		self.CHK_nameless.setChecked(False)
 		self.CMB_type.setCurrentIndex(0)
-
-		self.LBL_container.setEnabled(False)
-		self.LBL_show.setEnabled(False)
-		self.CMB_show.setEnabled(False)
-		self.CMB_show.addItems([s.get('name') for s in self.parent().db.getShows()])
 		self.CMB_show.setCurrentIndex(0)
-		self.LBL_seq.setEnabled(False)
-		self.CMB_seq.setEnabled(False)
 		self.CMB_seq.clear()
-		self.LBL_shot.setEnabled(False)
-		self.CMB_shot.setEnabled(False)
 		self.CMB_shot.clear()
 
 		self.populateSeqAndShot()
 
-		self.LNE_file.setText('')
 		self.BTN_import.setEnabled(False)
 
 		super(ImportElementDialog, self).show()
-
-class FindElementItem(QLabel):
-	def __init__(self, el, col, parent):
-		super(FindElementItem, self).__init__(parent)
-
-		self.element = el
-		self.col = col
-
-		self.setText(str(self.data()))
-
-	def data(self):
-		if self.col == 0:
-			return self.element.get('name')
-		elif self.col == 1:
-			return self.element.get('type')
-		elif self.col == 2:
-			container = self.element.getContainer()
-
-			if isinstance(container, tuple):
-				return '{} ({})'.format(str(container[1]), str(container[0]))
-			else:
-				return container
 
 class FindDialog(QDialog):
 	def __init__(self, parent):
@@ -806,25 +757,23 @@ class FindDialog(QDialog):
 			self.strOption = 2
 
 		self.elType = None if self.CMB_type.currentText() == 'any' else str(self.CMB_type.currentText())
-		self.show = str(self.CMB_show.currentText())
+		self._show = Show(str(self.CMB_show.currentText()))
 		self.seq = None if self.CMB_seq.currentText() == 'any' else str(self.CMB_seq.currentText())
 		self.shot = None if self.CMB_shot.currentText() == 'any' else str(self.CMB_shot.currentText())
-
-		cmds.pop(self.show)
 
 	def filterElements(self, element):
 		if self.string:
 			if self.strOption == 0: # contains
-				if self.string not in element.get('name'):
+				if self.string not in element.name:
 					return False
 			elif self.strOption == 1: # starts with
-				if not element.get('name').startswith(self.string):
+				if not element.name.startswith(self.string):
 					return False
 			elif self.strOption == 2: # ends with
-				if not element.get('name').endswith(self.string):
+				if not element.name.endswith(self.string):
 					return False
 
-		if self.elType and self.elType != element.get('type'):
+		if self.elType and self.elType != element.type:
 			return False
 
 		elParent = element.get('parent')
@@ -851,21 +800,19 @@ class FindDialog(QDialog):
 		seq = str(self.CMB_seq.currentText())
 
 		if not seq or seq == 'any':
-			self.CMB_shot.addItems([])
 			return
 
-		seq = env.show.getSequence(seq)
-		shots = [str(s.get('num')) for s in seq.getShots()]
+		shots = [str(s.num) for s in self._show.getShots(seqs=[int(seq)])]
 
 		self.CMB_shot.addItems(['any'] + sorted(shots, key=lambda s: int(s)))
 
 	def populateSeqAndShot(self):
 		self.CMB_seq.clear()
-		cmds.pop(str(self.CMB_show.currentText()))
+		self._show = Show(str(self.CMB_show.currentText()))
 
-		seqs = [str(s.get('num')) for s in env.show.getSequences()]
+		seqs = [str(s.num) for s in self._show.getSequences()]
 
-		self.CMB_seq.addItems(['any'] + sorted(seqs))
+		self.CMB_seq.addItems(['any'] + sorted(seqs, key=lambda s: int(s)))
 		self.populateShots()
 
 	def show(self):
@@ -876,17 +823,43 @@ class FindDialog(QDialog):
 		self.CMB_type.clear()
 		self.CMB_type.addItems(elTypeItems)
 		self.CMB_type.setCurrentIndex(0)
-		self.CMB_show.addItems([s.get('name') for s in self.parent().db.getShows()])
+		self.CMB_show.addItems([s.alias for s in db.getShows()])
 
 		self.populateSeqAndShot()
 
 		super(FindDialog, self).show()
 
 	def handleFind(self):
+		start = datetime.now()
+		QCoreApplication.instance().setOverrideCursor(QCursor(Qt.WaitCursor))
 		self.storeOptions()
 
-		show = self.parent().db.getShow(self.show)
-		elements = show.getAllElements(self.filterElements)
+		likeNamePattern = self.string
+
+		if self.strOption == 0:
+			likeNamePattern = '%' + likeNamePattern + '%'
+		elif self.strOption == 1:
+			likeNamePattern = likeNamePattern + '%'
+		elif self.strOption == 2:
+			likeNamePattern = '%' + likeNamePattern
+
+		query = """SELECT * FROM {} WHERE show='{}' AND name LIKE '{}'""".format(Element.TABLE, self._show.alias, likeNamePattern)
+
+		if self.elType:
+			query += "AND type='{}'".format(self.elType)
+
+		if self.seq:
+			query += "AND sequence='{}'".format(self.seq)
+
+		if self.shot:
+			query += "AND shot='{}'".format(self.shot)
+
+		elements = []
+
+		from helix.database.sql import Manager
+		with Manager(willCommit=False) as mgr:
+			for row in mgr.connection().execute(query).fetchall():
+					elements.append(Element.dummy().unmap(row))
 
 		self.TBL_found.clearContents()
 		self.TBL_found.setRowCount(0)
@@ -895,11 +868,19 @@ class FindDialog(QDialog):
 
 		for el in elements:
 			self.TBL_found.insertRow(row)
-			self.TBL_found.setCellWidget(row, 0, FindElementItem(el, 0, self.TBL_found))
-			self.TBL_found.setCellWidget(row, 1, FindElementItem(el, 1, self.TBL_found))
-			self.TBL_found.setCellWidget(row, 2, FindElementItem(el, 2, self.TBL_found))
+			self.TBL_found.setItem(row, 0, QTableWidgetItem(el.name))
+			self.TBL_found.setItem(row, 1, QTableWidgetItem(el.type))
+			self.TBL_found.setItem(row, 2, QTableWidgetItem(str(el.parent)))
 
 			row += 1
+
+		time = datetime.now() - start
+		matchText = ' match in ' if len(elements) == 1 else ' matches in '
+		matchText = str(len(elements)) + matchText
+		matchText += '{0:.3f} seconds'.format(time.total_seconds())
+
+		self.LBL_status.setText(matchText)
+		QApplication.instance().restoreOverrideCursor()
 
 class ManagerWindow(QMainWindow):
 	def __init__(self, dbPath=None):
@@ -917,11 +898,24 @@ class ManagerWindow(QMainWindow):
 		self.rollbackDialog = RollbackDialog(self)
 		self.importElementDialog = ImportElementDialog(self)
 		self.findDialog = FindDialog(self)
-		self.console = Console(self)
-		self.elViewer = None
-		self.elViewerHidden = True
 
+		# DOCK WIDGETS
+		self.console = Console(self)
+		self.console.setObjectName('Console')
 		self.addDockWidget(Qt.RightDockWidgetArea, self.console)
+
+		self.globalElViewer = ElementViewWidget(parent=self).asDockable()
+		self.globalElViewer.setObjectName('GlobalElements')
+
+		self.elementList = BasicElementView(parent=self)
+		self.elListDock = self.elementList.asDockable()
+		self.elListDock.setObjectName('ElementList')
+		self.addDockWidget(Qt.BottomDockWidgetArea, self.elListDock)
+
+		self.mainDock = QDockWidget('Hierarchy', self)
+		self.mainDock.setWidget(self.WIDG_main)
+		self.mainDock.setObjectName('Hierarchy')
+		self.addDockWidget(Qt.TopDockWidgetArea, self.mainDock)
 
 		uic.loadUi(os.path.join(helix.root, 'ui', 'editingDialog.ui'), self.editDialog)
 		self.editDialog.makeConnections()
@@ -955,6 +949,45 @@ class ManagerWindow(QMainWindow):
 			self.handleOpenDB(dbLoc=dbPath)
 
 		self.configureUiForPerms()
+
+	def restoreSettings(self, version=0):
+		settings = QSettings()
+
+		self.restoreGeometry(settings.value('geometry/{}'.format(version)).toByteArray())
+		self.restoreState(settings.value('windowState/{}'.format(version)).toByteArray())
+
+		hierarchy = settings.value('hierarchy/toggled/{}'.format(version), True).toBool()
+		elementList = settings.value('elementList/toggled/{}'.format(version), True).toBool()
+		globalElViewer = settings.value('globalElViewer/toggled/{}'.format(version), True).toBool()
+		console = settings.value('console/toggled/{}'.format(version), True).toBool()
+
+		self.ACT_hierarchy.setChecked(hierarchy)
+		self.ACT_elList.setChecked(elementList)
+		self.ACT_globalElView.setChecked(globalElViewer)
+		self.ACT_console.setChecked(console)
+
+		self.toggleElList()
+		self.toggleElementViewer()
+		self.toggleConsole()
+		self.toggleHierarchy()
+
+		# TODO: Save/Restore current data selection
+		# TODO: Update Window > menu option when dock is closed
+
+	def saveSettings(self, version=0):
+		settings = QSettings()
+
+		settings.setValue('geometry/{}'.format(version), self.saveGeometry())
+		settings.setValue('windowState/{}'.format(version), self.saveState())
+		settings.setValue('hierarchy/toggled/{}'.format(version), self.ACT_hierarchy.isChecked())
+		settings.setValue('elementList/toggled/{}'.format(version), self.ACT_elList.isChecked())
+		settings.setValue('globalElViewer/toggled/{}'.format(version), self.ACT_globalElView.isChecked())
+		settings.setValue('console/toggled/{}'.format(version), self.ACT_console.isChecked())
+
+	def closeEvent(self, event):
+		self.saveSettings()
+
+		super(ManagerWindow, self).closeEvent(event)
 
 	def configureUiForPerms(self):
 		self.checkAction('helix.create.show', self.ACT_newShow)
@@ -1004,21 +1037,29 @@ class ManagerWindow(QMainWindow):
 		self.ACT_newSeq.triggered.connect(self.handleNewSequence)
 		self.ACT_newShot.triggered.connect(self.handleNewShot)
 		self.ACT_newElement.triggered.connect(self.handleNewElement)
-		self.ACT_editProperties.triggered.connect(self.handleElementEdit)
+		self.ACT_editProperties.triggered.connect(self.handleGetProperties)
 		self.ACT_explorer.triggered.connect(self.handleExplorer)
 		self.ACT_importElement.triggered.connect(self.handleImportElement)
-		self.TBL_elements.itemDoubleClicked.connect(self.handleElementEdit)
 		self.VIEW_cols.doubleClicked.connect(self.handleDataEdit)
 		self.ACT_find.triggered.connect(self.findDialog.show)
 		self.ACT_prefGeneral.triggered.connect(lambda: self.handleConfigEditor(0))
 		self.ACT_prefPerms.triggered.connect(lambda: self.handleConfigEditor(1))
 		self.ACT_prefExe.triggered.connect(lambda: self.handleConfigEditor(2))
 
+		self.ACT_hierarchy.triggered.connect(self.toggleHierarchy)
+		self.ACT_elList.triggered.connect(self.toggleElList)
+		self.ACT_globalElView.triggered.connect(self.toggleElementViewer)
 		self.ACT_console.triggered.connect(self.toggleConsole)
-		self.ACT_elView.triggered.connect(self.toggleElementViewer)
+		self.ACT_load1.triggered.connect(lambda: self.restoreSettings(1))
+		self.ACT_load2.triggered.connect(lambda: self.restoreSettings(2))
+		self.ACT_load3.triggered.connect(lambda: self.restoreSettings(3))
+		self.ACT_save1.triggered.connect(lambda: self.saveSettings(1))
+		self.ACT_save2.triggered.connect(lambda: self.saveSettings(2))
+		self.ACT_save3.triggered.connect(lambda: self.saveSettings(3))
+		self.ACT_loadOldSchool.triggered.connect(self.loadOldSchool)
 
 		self.ACT_about.triggered.connect(self.handleAbout)
-		self.ACT_wiki.triggered.connect(lambda: QDesktopServices.openUrl(QUrl('http://www.github.com/sashaouellet/Helix/wiki')))
+		self.ACT_manual.triggered.connect(lambda: QDesktopServices.openUrl(QUrl('http://helix.readthedocs.io/en/dev')))
 
 		self.MENU_elementTypes.clear()
 		self.MENU_elementTypes.setWindowTitle('Element Type Filter')
@@ -1035,21 +1076,36 @@ class ManagerWindow(QMainWindow):
 		self.MENU_elementTypes.addAction('View All').triggered.connect(lambda: self.handleElementTypeFilter(True))
 		self.MENU_elementTypes.addAction('Hide All').triggered.connect(lambda: self.handleElementTypeFilter(False))
 
+	def loadOldSchool(self):
+		self.mainDock.hide()
+		self.elListDock.hide()
+		self.globalElViewer.hide()
+		self.console.setWindowState(Qt.WindowMaximized)
+		self.console.show()
+
+	def toggleHierarchy(self):
+		if self.ACT_hierarchy.isChecked():
+			self.mainDock.show()
+		else:
+			self.mainDock.hide()
+
+	def toggleElList(self):
+		if self.ACT_elList.isChecked():
+			self.elListDock.show()
+		else:
+			self.elListDock.hide()
+
 	def toggleElementViewer(self):
-		if self.elViewerHidden:
-			self.restoreDockWidget(self.elViewer)
-			self.elViewerHidden = False
-		elif not self.elViewerHidden:
-			self.removeDockWidget(self.elViewer)
-			self.elViewerHidden = True
+		if self.ACT_globalElView.isChecked():
+			self.globalElViewer.show()
+		else:
+			self.globalElViewer.hide()
 
 	def toggleConsole(self):
-		if self.console._hidden:
-			self.restoreDockWidget(self.console)
-			self.console._hidden = False
-		elif not self.console._hidden:
-			self.removeDockWidget(self.console)
-			self.console._hidden = True
+		if self.ACT_console.isChecked():
+			self.console.show()
+		else:
+			self.console.hide()
 
 	def handleConfigEditor(self, tabIndex):
 		dialog = ConfigEditorDialog(self)
@@ -1092,7 +1148,7 @@ class ManagerWindow(QMainWindow):
 		self.handleDataSelection(self.currentSelectionIndex, None)
 
 	def handleExplorer(self):
-		item = self.TBL_elements.cellWidget(self.TBL_elements.currentRow(), self.TBL_elements.currentColumn())
+		item = self.elementList.cellWidget(self.elementList.currentRow(), self.elementList.currentColumn())
 
 		# Fall back to selection in the column view and try to show the file location for that
 		if not item:
@@ -1101,7 +1157,7 @@ class ManagerWindow(QMainWindow):
 			if not idx.isValid():
 				return
 
-			fileutils.openPathInExplorer(idx.internalPointer().data(0).getDiskLocation())
+			fileutils.openPathInExplorer(idx.internalPointer().data(0).work_path)
 		else:
 			item.handleExplorer(True)
 
@@ -1186,20 +1242,14 @@ class ManagerWindow(QMainWindow):
 		self.editDialog.setItem(item)
 		self.editDialog.show()
 
-	def handleElementEdit(self, item=None):
-		if not item:
-			item = self.TBL_elements.cellWidget(self.TBL_elements.currentRow(), self.TBL_elements.currentColumn())
+	def handleGetProperties(self):
+		item = self.elementList.currentItem()
 
-			# Fall back to selection in the column view and try to show the edit dialog for that
-			if not item:
-				idx = self.VIEW_cols.selectionModel().currentIndex()
-
-				self.handleDataEdit(idx)
-		if not isinstance(item, ElementTableItem):
-			return
-
-		self.editDialog.setItem(item.element)
-		self.editDialog.show()
+		if item:
+			self.elementList.handleElementEdit()
+		else:
+			# Fallback to show/seq/shot
+			self.handleDataEdit(self.VIEW_cols.currentIndex())
 
 	def buildContextMenu(self, obj):
 		self.MENU_contextMenu.clear()
@@ -1211,11 +1261,19 @@ class ManagerWindow(QMainWindow):
 		elif obj == Shot:
 			self.MENU_contextMenu.setTitle('Shot')
 
-			# Add actions
+			# Top level actions
 			self.ACT_slapComp = QAction('Auto Slap Comp...', self.MENU_contextMenu)
 			self.ACT_slapComp.triggered.connect(self.handleSlapComp)
 
+			# Sub menus
+			self.MENU_takes = QMenu('Takes', parent=self.MENU_contextMenu)
+			self.ACT_newTake = QAction('New take...', self.MENU_takes)
+
+			self.MENU_takes.addAction(self.ACT_newTake)
+
 			self.MENU_contextMenu.addAction(self.ACT_slapComp)
+			self.MENU_contextMenu.addSeparator()
+			self.MENU_contextMenu.addMenu(self.MENU_takes)
 
 	def checkSelection(self):
 		self.ACT_newSeq.setEnabled(False)
@@ -1251,16 +1309,17 @@ class ManagerWindow(QMainWindow):
 	def handleDataSelection(self, currentIndex, oldIndex):
 		if not currentIndex or not currentIndex.isValid():
 			self.currentSelectionIndex = None
-			self.TBL_elements.clearContents()
-			self.TBL_elements.setRowCount(0)
+			self.elementList.clearContents()
+			self.elementList.setRowCount(0)
 			return
 
 		self.currentSelectionIndex = currentIndex
 
+		QApplication.instance().setOverrideCursor(QCursor(Qt.WaitCursor))
 		self.checkSelection()
 
-		self.TBL_elements.clearContents()
-		self.TBL_elements.setRowCount(0)
+		self.elementList.clearContents()
+		self.elementList.setRowCount(0)
 
 		container = currentIndex.internalPointer().data(0)
 		els = []
@@ -1272,8 +1331,8 @@ class ManagerWindow(QMainWindow):
 				exclusive=True,
 				debug=True
 			)
-			# self.elViewer = ElementViewWidget(els, self).asDockable()
-			# self.addDockWidget(Qt.BottomDockWidgetArea, self.elViewer)
+			if self.globalElViewer:
+				self.globalElViewer.widget().setElements(container.getElements())
 		else:
 			els = container.getElements(
 				types=self.elTypeFilter if self.elTypeFilter else [''],
@@ -1281,25 +1340,8 @@ class ManagerWindow(QMainWindow):
 				debug=True
 			)
 
-		for el in els:
-			row = self.TBL_elements.rowCount()
-
-			self.TBL_elements.insertRow(row)
-
-			# TODO, make this a legit table item that has data per column
-			typeItem = ElementTableItem(el, 0, self)
-			nameItem = ElementTableItem(el, 1, self)
-
-			self.TBL_elements.setCellWidget(row, 0, typeItem)
-			self.TBL_elements.setCellWidget(row, 1, nameItem)
-
-		self.TBL_elements.doubleClicked.connect(self.handleElTableDoubleClick)
-
-	def handleElTableDoubleClick(self, index):
-		if not index.isValid():
-			return
-
-		self.handleElementEdit()
+		self.elementList.setContainer(container)
+		QApplication.instance().restoreOverrideCursor()
 
 	def handleOpenDB(self, dbLoc=None):
 		self.dbLoc = dbLoc if dbLoc else QFileDialog.getOpenFileName(self, caption='Open Database File', filter='Database Files (*.json)')
@@ -1351,6 +1393,82 @@ class ManagerWindow(QMainWindow):
 
 		dialog.exec_()
 
+class BasicElementView(QTableWidget):
+	COLUMNS = ['Name', 'Type', 'Author', 'Creation', 'Version']
+
+	def __init__(self, container=None, parent=None):
+		super(BasicElementView, self).__init__(parent=parent)
+		self.parent = parent
+		self.container = container
+
+		self.makeConnections()
+
+		self.setColumnCount(len(BasicElementView.COLUMNS))
+		self.setHorizontalHeaderLabels(BasicElementView.COLUMNS)
+		self.setMinimumSize(300, 100)
+		self.verticalHeader().setVisible(False)
+
+		self.setContainer(self.container)
+
+	def makeConnections(self):
+		self.cellDoubleClicked.connect(self.handleElementEdit)
+
+	def setContainer(self, container):
+		self.clearContents()
+		self.setRowCount(0)
+
+		els = []
+
+		if container:
+			els = container.getElements(exclusive=True)
+
+		self.setRowCount(len(els))
+
+		for row, el in enumerate(els):
+			for col, attr in enumerate(BasicElementView.COLUMNS):
+				self.setCellWidget(row, col, ElementTableItem(el.id, str(getattr(el, attr.lower())), self))
+
+		self.resizeHeader()
+
+	def resizeEvent(self, event):
+		self.resizeHeader()
+		super(BasicElementView, self).resizeEvent(event)
+
+	def resizeHeader(self):
+		header = self.horizontalHeader()
+
+		for i in range(len(BasicElementView.COLUMNS)):
+			header.setResizeMode(QHeaderView.ResizeToContents)
+
+		header.setResizeMode(QHeaderView.Fixed)
+
+		if header.size().width() <= self.size().width():
+			for i in range(len(BasicElementView.COLUMNS)):
+				self.setColumnWidth(
+					i,
+					self.size().width() / (1.0 * len(BasicElementView.COLUMNS))
+				)
+
+	def asDockable(self):
+		qdock = QDockWidget('Asset List', self.parent)
+		qdock.setWidget(self)
+
+		return qdock
+
+	def handleElementEdit(self, row=None, col=None):
+		if row is None:
+			row = self.currentRow()
+		if col is None:
+			col = self.currentColumn()
+
+		item = self.cellWidget(row, col)
+
+		if not isinstance(item, ElementTableItem):
+			return
+
+		self.parent.editDialog.setItem(item.element)
+		self.parent.editDialog.show()
+
 if __name__ == '__main__':
 	app = QApplication(sys.argv)
 	dbPath = None
@@ -1389,9 +1507,10 @@ if __name__ == '__main__':
 	window.setWindowState(window.windowState() & Qt.WindowMinimized | Qt.WindowActive)
 	window.raise_()
 	window.activateWindow()
-	window.setWindowState(Qt.WindowMaximized)
-	window.setDockOptions(QMainWindow.AnimatedDocks | QMainWindow.AllowNestedDocks | QMainWindow.AllowTabbedDocks)
 	window.setTabPosition(Qt.TopDockWidgetArea | Qt.BottomDockWidgetArea | Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea, QTabWidget.North)
 	app.restoreOverrideCursor()
+
+	# Restore geo/state settings
+	window.restoreSettings()
 
 	sys.exit(app.exec_())

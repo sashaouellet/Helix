@@ -7,11 +7,11 @@
     <x>0</x>
     <y>0</y>
     <width>708</width>
-    <height>286</height>
+    <height>382</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Find Element</string>
+   <string>Find Asset</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
@@ -19,7 +19,7 @@
      <item>
       <widget class="QLabel" name="label_2">
        <property name="text">
-        <string>Element name:</string>
+        <string>Asset name:</string>
        </property>
       </widget>
      </item>
@@ -57,7 +57,7 @@
      <item>
       <widget class="QLabel" name="label">
        <property name="text">
-        <string>Element type:</string>
+        <string>Asset type:</string>
        </property>
       </widget>
      </item>
@@ -138,7 +138,7 @@
      <item>
       <widget class="QLabel" name="LBL_status">
        <property name="text">
-        <string>0 / 0 match(es)</string>
+        <string>0 matches</string>
        </property>
       </widget>
      </item>
@@ -160,12 +160,21 @@
        <property name="text">
         <string>Cancel</string>
        </property>
+       <property name="autoDefault">
+        <bool>false</bool>
+       </property>
       </widget>
      </item>
      <item>
       <widget class="QPushButton" name="BTN_find">
        <property name="text">
         <string>Find</string>
+       </property>
+       <property name="autoDefault">
+        <bool>false</bool>
+       </property>
+       <property name="default">
+        <bool>true</bool>
        </property>
       </widget>
      </item>

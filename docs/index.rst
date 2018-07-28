@@ -3,8 +3,9 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
+************************
 Helix User Documentation
-========================
+************************
 
 Helix is a show and asset management system designed to establish a useable pipeline for versioning, creating takes, and constructing dailies for a production. The system is meant to be used by any scope of project ranging from small solo projects to large collaborative films.
 

@@ -1,5 +1,7 @@
-from helix.database.database import *
 import sqlite3
+import os
+
+from helix.database.database import *
 import helix.environment.environment as env
 from helix.database.person import Person
 from helix.database.show import Show
