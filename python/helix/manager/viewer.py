@@ -14,9 +14,8 @@ import helix.utils.fileutils as fileutils
 from helix.manager.dailies import SlapCompDialog
 from helix.manager.config import ConfigEditorDialog
 from helix.manager.console import Console
-from helix.manager.element import ElementViewWidget
-from helix.utils.qtutils import ExceptionDialog, FileChooserLayout
-from helix.utils.qtutils import Node
+from helix.manager.element import ElementViewWidget, ElementPickerDialog, PickMode
+from helix.utils.qtutils import Node, ExceptionDialog, FileChooserLayout, ElementListWidgetItem, Operation
 import helix.utils.utils as utils
 
 import qdarkstyle
@@ -168,7 +167,7 @@ class ElementTableItem(QLabel):
 
 	def handleRollback(self):
 		env.setEnvironment('element', self.elementId)
-		self.parent.rollbackDialog.show(self.element)
+		RollbackDialog(self.parent.parent, self.element).show()
 
 	@property
 	def element(self):
@@ -233,7 +232,7 @@ class PublishDialog(QDialog):
 	def makeConnections(self):
 		self.pubButton.clicked.connect(self.accept)
 		self.cancelButton.clicked.connect(self.reject)
-		self.fileChooser.fileChosenSignal.connect(self.handleFileChosen)
+		self.fileChooser.fileChosen.connect(self.handleFileChosen)
 
 	def handleRangeCheck(self):
 		self.range1.setEnabled(self.rangeChk.isChecked())
@@ -290,6 +289,10 @@ class PublishDialog(QDialog):
 class NewShowDialog(QDialog):
 	def __init__(self, parent):
 		super(NewShowDialog, self).__init__(parent)
+		uic.loadUi(os.path.join(helix.root, 'ui', 'showCreation.ui'), self)
+
+		self.makeConnections()
+		self.checkCanCreate()
 
 	def makeConnections(self):
 		self.BTN_create.clicked.connect(self.accept)
@@ -325,19 +328,28 @@ class NewShowDialog(QDialog):
 			self.parent().handleDBReload()
 			super(NewShowDialog, self).accept()
 
-	def show(self):
-		self.LNE_alias.setText('')
-		self.LNE_name.setText('')
-
-		self.checkCanCreate()
-		super(NewShowDialog, self).show()
-
 	def getInputs(self):
 		return (str(self.LNE_alias.text()).strip(), str(self.LNE_name.text()).strip())
 
 class NewSequenceDialog(QDialog):
-	def __init__(self, parent):
+	def __init__(self, parent, show):
 		super(NewSequenceDialog, self).__init__(parent)
+		uic.loadUi(os.path.join(helix.root, 'ui', 'seqCreation.ui'), self)
+		self.makeConnections()
+
+		self._show = show
+
+		from helix.database.sql import Manager
+		with Manager(willCommit=False) as mgr:
+			row = mgr.connection().execute(
+				"SELECT MAX(num) FROM {} WHERE show='{}'".format(
+					Sequence.TABLE,
+					self._show
+				)
+			).fetchone()
+
+		self.SPN_num.setValue(row[0] + 100 if row and row[0] is not None else 100)
+		self.LBL_show.setText(str(self._show))
 
 	def makeConnections(self):
 		self.BTN_create.clicked.connect(self.accept)
@@ -354,26 +366,30 @@ class NewSequenceDialog(QDialog):
 			self.parent().handleDBReload()
 			super(NewSequenceDialog, self).accept()
 
-	def show(self, showName):
-		self._show = showName
+class NewShotDialog(QDialog):
+	def __init__(self, parent, show, seq):
+		super(NewShotDialog, self).__init__(parent)
+		uic.loadUi(os.path.join(helix.root, 'ui', 'shotCreation.ui'), self)
+		self.makeConnections()
+
+		self._show = show
+		self._seq = seq
 
 		from helix.database.sql import Manager
 		with Manager(willCommit=False) as mgr:
 			row = mgr.connection().execute(
-				"SELECT MAX(num) FROM {} WHERE show='{}'".format(
-					Sequence.TABLE,
-					self._show
+				"SELECT MAX(num) FROM {} WHERE show='{}' and sequence='{}'".format(
+					Shot.TABLE,
+					self._show,
+					self._seq
 				)
 			).fetchone()
 
 		self.SPN_num.setValue(row[0] + 100 if row and row[0] is not None else 100)
 		self.LBL_show.setText(str(self._show))
+		self.LBL_seq.setText(str(self._seq))
 
-		super(NewSequenceDialog, self).show()
-
-class NewShotDialog(QDialog):
-	def __init__(self, parent):
-		super(NewShotDialog, self).__init__(parent)
+		self.checkCanCreate()
 
 	def makeConnections(self):
 		self.BTN_create.clicked.connect(self.accept)
@@ -415,30 +431,6 @@ class NewShotDialog(QDialog):
 			self.parent().handleDBReload()
 			super(NewShotDialog, self).accept()
 
-	def show(self, showName, seq):
-		self._show = showName
-		self._seq = seq
-
-		from helix.database.sql import Manager
-		with Manager(willCommit=False) as mgr:
-			row = mgr.connection().execute(
-				"SELECT MAX(num) FROM {} WHERE show='{}' and sequence='{}'".format(
-					Shot.TABLE,
-					self._show,
-					self._seq
-				)
-			).fetchone()
-
-		self.SPN_num.setValue(row[0] + 100 if row and row[0] is not None else 100)
-		self.SPN_start.setValue(0)
-		self.SPN_end.setValue(0)
-		self.LNE_clip.setText('')
-		self.LBL_show.setText(str(self._show))
-		self.LBL_seq.setText(str(self._seq))
-
-		self.checkCanCreate()
-		super(NewShotDialog, self).show()
-
 	def getInputs(self):
 		shotNum = self.SPN_num.value()
 		start = self.SPN_start.value()
@@ -448,8 +440,22 @@ class NewShotDialog(QDialog):
 		return (shotNum, start, end, clipName)
 
 class NewElementDialog(QDialog):
-	def __init__(self, parent):
+	def __init__(self, parent, show, seq, shot):
 		super(NewElementDialog, self).__init__(parent)
+		uic.loadUi(os.path.join(helix.root, 'ui', 'elementCreation.ui'), self)
+		self.makeConnections()
+
+		self._show = show
+		self._seq = seq
+		self._shot = shot
+		container = self._shot if self._shot else self._seq
+		container = container if container else self._show
+
+		self.CMB_type.addItems(Element.ELEMENT_TYPES)
+		self.CHK_nameless.setVisible(self._seq is not None and self._shot is not None)
+		self.LBL_container.setText(str(container))
+
+		self.checkCanCreate()
 
 	def makeConnections(self):
 		self.BTN_create.clicked.connect(self.accept)
@@ -508,26 +514,6 @@ class NewElementDialog(QDialog):
 			self.parent().handleDBReload()
 			super(NewElementDialog, self).accept()
 
-	def show(self, showObj, seqObj, shotObj):
-		self._show = showObj
-		self._seq = seqObj
-		self._shot = shotObj
-		container = self._shot if self._shot else self._seq
-		container = container if container else self._show
-
-		self.LNE_name.setEnabled(True)
-		self.LNE_name.setText('')
-		self.CMB_type.clear()
-		self.CMB_type.addItems(Element.ELEMENT_TYPES)
-		self.CMB_type.setCurrentIndex(0)
-		self.CHK_nameless.setCheckState(Qt.Unchecked)
-		self.CHK_nameless.setVisible(self._seq is not None and self._shot is not None)
-		self.LBL_container.setText(str(container))
-
-		self.checkCanCreate()
-
-		super(NewElementDialog, self).show()
-
 	def getInputs(self):
 		name = str(self.LNE_name.text()).strip() if self.CHK_nameless.checkState() == Qt.Unchecked else '-'
 		elType = str(self.CMB_type.currentText())
@@ -535,8 +521,21 @@ class NewElementDialog(QDialog):
 		return (name, elType)
 
 class RollbackDialog(QDialog):
-	def __init__(self, parent):
+	def __init__(self, parent, element):
 		super(RollbackDialog, self).__init__(parent)
+		uic.loadUi(os.path.join(helix.root, 'ui', 'rollbackDialog.ui'), self)
+
+		self._element = element
+
+		self.LBL_pubVersion.setText(str(element.pubVersion if element.pubVersion else '--'))
+
+		versions = element.getPublishedVersions()
+
+		# Add all but the current published version, we don't allow for them to rollback
+		# to the current version anyway
+		self.CMB_rollback.addItems([str(ver) for ver in versions if ver != element.pubVersion])
+
+		self.makeConnections()
 
 	def makeConnections(self):
 		self.BTN_rollback.clicked.connect(self.accept)
@@ -555,20 +554,6 @@ class RollbackDialog(QDialog):
 		except Exception, e:
 			QMessageBox.warning(self, 'Rollback error', str(e))
 			return
-
-	def show(self, element):
-		self._element = element
-
-		self.LBL_pubVersion.setText(str(element.pubVersion if element.pubVersion else '--'))
-		self.CMB_rollback.clear()
-
-		versions = element.getPublishedVersions()
-
-		# Add all but the current published version, we don't allow for them to rollback
-		# to the current version anyway
-		self.CMB_rollback.addItems([str(ver) for ver in versions if ver != element.pubVersion])
-
-		super(RollbackDialog, self).show()
 
 class PropertyValueWidgetItem(QTableWidgetItem):
 	def __init__(self, text, obj):
@@ -603,17 +588,22 @@ class PropertyValueModel(QAbstractItemModel):
 		return QVariant()
 
 class EditingDialog(QDialog):
-	def __init__(self, parent):
+	def __init__(self, parent, item):
 		super(EditingDialog, self).__init__(parent)
+		uic.loadUi(os.path.join(helix.root, 'ui', 'editingDialog.ui'), self)
+
+		self.BTN_refresh.setIcon(QApplication.instance().style().standardIcon(QStyle.SP_BrowserReload))
+		self.TBL_properties.clearContents()
+		self.TBL_properties.setRowCount(0)
+
+		self.makeConnections()
+		self.setItem(item)
 
 	def setItem(self, item):
 		QCoreApplication.instance().setOverrideCursor(QCursor(Qt.WaitCursor))
-		self.BTN_refresh.setIcon(QApplication.instance().style().standardIcon(QStyle.SP_BrowserReload))
 		self.item = item
 
 		self.setWindowTitle('{} properties'.format(str(self.item)))
-		self.TBL_properties.clearContents()
-		self.TBL_properties.setRowCount(0)
 
 		row = 0
 
@@ -647,17 +637,68 @@ class ImportElementDialog(QDialog):
 	def __init__(self, parent):
 		super(ImportElementDialog, self).__init__(parent)
 
-	def makeConnections(self):
+		uic.loadUi(os.path.join(helix.root, 'ui', 'importElementDialog.ui'), self)
+
 		self.CMB_type.addItems(Element.ELEMENT_TYPES)
 		self.CMB_show.addItems([s.alias for s in db.getShows()])
+		self.folderLayout = FileChooserLayout(self, browseCaption='Select folder with asset contents', selectionMode=FileChooserLayout.FOLDER)
+		self.LAY_folderSelect.addLayout(self.folderLayout)
 
+		self.makeConnections()
+
+	def makeConnections(self):
 		self.BTN_cancel.clicked.connect(self.reject)
 		self.BTN_import.clicked.connect(self.accept)
-		# self.BTN_folder.clicked.connect(self.handleFolderImport)
-		# self.LNE_folder.textChanged.connect(self.handleFolderChange)
+		self.BTN_assetBrowse.clicked.connect(self.handleElementBrowse)
 		self.CHK_nameless.clicked.connect(self.handleNamelessToggle)
 		self.CMB_show.currentIndexChanged.connect(self.populateSeqAndShot)
 		self.CMB_seq.currentIndexChanged.connect(self.populateShots)
+		self.folderLayout.fileChosen.connect(self.handleFileChosen)
+
+	def handleElementBrowse(self):
+		dialog = ElementPickerDialog(db.getElements(), parent=self)
+
+		dialog.exec_()
+
+		selected = dialog.getSelectedElements()
+
+		if not selected:
+			return
+
+		if not selected[0].name.startswith('_'):
+			self.LNE_name.setText(selected[0].name)
+			self.LNE_name.setEnabled(True)
+			self.CHK_nameless.setChecked(False)
+		else:
+			self.LNE_name.setText('')
+			self.LNE_name.setEnabled(False)
+			self.CHK_nameless.setChecked(True)
+
+		typeIndex = self.CMB_type.findText(selected[0].type)
+
+		if typeIndex != -1:
+			self.CMB_type.setCurrentIndex(typeIndex)
+
+		showIndex = self.CMB_show.findText(selected[0].show)
+
+		if showIndex != -1:
+			self.CMB_show.setCurrentIndex(showIndex)
+
+		if selected[0].sequence is not None:
+			seqIndex = self.CMB_seq.findText(str(selected[0].sequence))
+
+			if seqIndex != -1:
+				self.CMB_seq.setCurrentIndex(seqIndex)
+
+		if selected[0].shot is not None:
+			clipName = selected[0].shot_clipName if selected[0].shot_clipName is not None else ''
+			shotIndex = self.CMB_shot.findText(str(selected[0].shot) + clipName)
+
+			if shotIndex != -1:
+				self.CMB_shot.setCurrentIndex(shotIndex)
+
+	def handleFileChosen(self):
+		self.BTN_import.setEnabled(os.path.exists(self.folderLayout.getFile()))
 
 	def handleNamelessToggle(self):
 		self.LBL_name.setEnabled(not self.CHK_nameless.isChecked())
@@ -668,74 +709,150 @@ class ImportElementDialog(QDialog):
 
 		seq = str(self.CMB_seq.currentText())
 
-		if not seq:
+		if not seq or seq == '--':
+			self.CMB_shot.addItems(['--'])
 			return
 
-		shots = [str(s.num) for s in self._show.getShots(seqs=[int(seq)])]
+		# Have to keep shots this way since we need to track the clipname as well
+		self.shots = sorted([s for s in self._show.getShots(seqs=[int(seq)])], key=lambda s: int(s.num))
 
-		self.CMB_shot.addItems(sorted(shots, key=lambda s: int(s)))
+		self.CMB_shot.addItems(['--'] + [str(s.num) + (s.clipName if s.clipName else '') for s in self.shots])
+		self.shots = ['--'] + self.shots
 
 	def populateSeqAndShot(self):
 		self.CMB_seq.clear()
 		self._show = Show(str(self.CMB_show.currentText()))
 		seqs = [str(s.num) for s in self._show.getSequences()]
 
-		self.CMB_seq.addItems(sorted(seqs, key=lambda s: int(s)))
+		self.CMB_seq.addItems(['--'] + sorted(seqs, key=lambda s: int(s)))
 		self.populateShots()
 
-	def handleFileImport(self):
-		self.LNE_file.setText(QFileDialog.getOpenFileName(self, 'Work File', str(self.LNE_folder.text()).strip()))
-
-		self.handleFileChange()
-
-	def handleFolderChange(self):
-		text = str(self.LNE_folder.text()).strip()
-		cond = os.path.exists(text) and os.path.isdir(text)
-
-		self.LBL_file.setEnabled(cond)
-		self.LNE_file.setEnabled(cond)
-		self.BTN_file.setEnabled(cond)
-		self.CHK_importAll.setEnabled(cond)
-
-	def handleFileChange(self):
-		text = str(self.LNE_file.text()).strip()
-		cond = os.path.exists(text)
-
-		self.LBL_name.setEnabled(cond)
-		self.LNE_name.setEnabled(cond)
-		self.CHK_nameless.setEnabled(cond)
-
-		self.LBL_type.setEnabled(cond)
-		self.CMB_type.setEnabled(cond)
-
-		self.LBL_container.setEnabled(cond)
-		self.LBL_show.setEnabled(cond)
-		self.CMB_show.setEnabled(cond)
-		self.LBL_seq.setEnabled(cond)
-		self.CMB_seq.setEnabled(cond)
-		self.LBL_shot.setEnabled(cond)
-		self.CMB_shot.setEnabled(cond)
-
-	def handleFolderImport(self):
-		self.LNE_folder.setText(QFileDialog.getExistingDirectory(self, caption='Element Folder'))
-
-		self.handleFolderChange()
-
 	def accept(self):
+		show = str(self.CMB_show.currentText())
+		seq = int(self.CMB_seq.currentText()) if self.CMB_seq.count() > 0 and self.CMB_seq.currentText() != '--' else None
+		shot = self.shots[self.CMB_shot.currentIndex()] if self.CMB_shot.count() > 0 and self.CMB_shot.currentText() != '--' else None
+		shotNum = shot.num if shot else None
+		clipName = shot.clipName if shot else None
+		assetDir = self.folderLayout.getFile()
+		assetName = str(self.LNE_name.text()) if not self.CHK_nameless.isChecked() else None
+		assetType = str(self.CMB_type.currentText())
+		overwriteOption = 0
+
+		if self.RDO_versionUp.isChecked():
+			overwriteOption = 1
+		elif self.RDO_skip.isChecked():
+			overwriteOption = 2
+
+		self.parent().console.inject(['pop', show])
+
+		cmd = [
+			'import',
+			'-o', str(overwriteOption)
+		]
+
+		if assetName is not None:
+			cmd.extend(['-n', assetName])
+
+		if seq is not None:
+			cmd.extend(['-sq', str(seq)])
+
+		if shot is not None:
+			cmd.extend(['-s', str(shotNum)])
+
+		if clipName is not None:
+			cmd.extend(['-c', str(clipName)])
+
+		cmd.extend([assetDir, assetType])
+
+		self.parent().console.inject(cmd)
+
 		super(ImportElementDialog, self).accept()
 
 	def show(self):
-		self.CHK_nameless.setChecked(False)
-		self.CMB_type.setCurrentIndex(0)
-		self.CMB_show.setCurrentIndex(0)
-		self.CMB_seq.clear()
-		self.CMB_shot.clear()
-
 		self.populateSeqAndShot()
 
-		self.BTN_import.setEnabled(False)
-
 		super(ImportElementDialog, self).show()
+
+class ExportDialog(QDialog):
+	def __init__(self, parent):
+		super(ExportDialog, self).__init__(parent)
+
+		uic.loadUi(os.path.join(helix.root, 'ui', 'exportDialog.ui'), self)
+
+		self.folderLayout = FileChooserLayout(self, browseCaption='Select folder to export to', label='Export destination', selectionMode=FileChooserLayout.FOLDER)
+		self.LAY_folderSelect.addLayout(self.folderLayout)
+
+		self.makeConnections()
+
+	def makeConnections(self):
+		self.BTN_elementBrowse.clicked.connect(self.handleElementBrowse)
+		self.BTN_remove.clicked.connect(self.removeSelected)
+		self.BTN_cancel.clicked.connect(self.reject)
+		self.BTN_export.clicked.connect(self.accept)
+		self.CHK_work.clicked.connect(self.determineExportButtonStatus)
+		self.CHK_release.clicked.connect(self.determineExportButtonStatus)
+		self.folderLayout.fileChosen.connect(self.handleFileChosen)
+
+	def determineExportButtonStatus(self):
+		if self.CHK_work.isChecked() or self.CHK_release.isChecked():
+			self.handleFileChosen()
+		else:
+			self.BTN_export.setEnabled(False)
+
+	def removeSelected(self):
+		for item in self.LST_elements.selectedItems():
+			self.LST_elements.takeItem(self.LST_elements.row(item))
+
+	def handleFileChosen(self):
+		self.BTN_export.setEnabled(os.path.exists(self.folderLayout.getFile()))
+
+	def handleElementBrowse(self):
+		dialog = ElementPickerDialog(db.getElements(), parent=self, mode=PickMode.MULTI)
+
+		dialog.exec_()
+
+		selected = dialog.getSelectedElements()
+
+		if not selected:
+			return
+
+		self.LST_elements.clear()
+
+		for row, el in enumerate(selected):
+			self.LST_elements.insertItem(row, ElementListWidgetItem(el, parent=self.LST_elements))
+
+	def accept(self):
+		with Operation(numOps=self.LST_elements.count(), parent=self) as op:
+			for row in range(self.LST_elements.count()):
+				el = self.LST_elements.item(row).element
+				cmd = ['export']
+
+				op.updateLabel('Exporting {}...'.format(str(el)))
+
+				if el.name is not None and not el.name.startswith('_'):
+					cmd.extend(['-n', el.name])
+
+				if el.sequence is not None:
+					cmd.extend(['-sq', str(el.sequence)])
+
+				if el.shot is not None:
+					cmd.extend(['-s', str(el.shot)])
+
+				if el.shot_clipName is not None:
+					cmd.extend(['-c', str(el.shot_clipName)])
+
+				if self.CHK_work.isChecked:
+					cmd.append('--work')
+
+				if self.CHK_release.isChecked:
+					cmd.append('--release')
+
+				cmd.extend([self.folderLayout.getFile(), el.show, el.type])
+
+				self.parent().console.inject(cmd)
+				op.tick()
+
+		super(ExportDialog, self).accept()
 
 class FindDialog(QDialog):
 	def __init__(self, parent):
@@ -890,16 +1007,8 @@ class ManagerWindow(QMainWindow):
 		self.permHandler = perms.PermissionHandler()
 		self.elTypeFilter = Element.ELEMENT_TYPES
 		self.currentSelectionIndex = None
-		self.editDialog = EditingDialog(self)
-		self.showCreationDialog = NewShowDialog(self)
-		self.seqCreationDialog = NewSequenceDialog(self)
-		self.shotCreationDialog = NewShotDialog(self)
-		self.elementCreationDialog = NewElementDialog(self)
-		self.rollbackDialog = RollbackDialog(self)
-		self.importElementDialog = ImportElementDialog(self)
-		self.findDialog = FindDialog(self)
 
-		# DOCK WIDGETS
+		# == START dock widgets ==
 		self.console = Console(self)
 		self.console.setObjectName('Console')
 		self.addDockWidget(Qt.RightDockWidgetArea, self.console)
@@ -916,28 +1025,10 @@ class ManagerWindow(QMainWindow):
 		self.mainDock.setWidget(self.WIDG_main)
 		self.mainDock.setObjectName('Hierarchy')
 		self.addDockWidget(Qt.TopDockWidgetArea, self.mainDock)
+		# == END dock widgets ==
 
-		uic.loadUi(os.path.join(helix.root, 'ui', 'editingDialog.ui'), self.editDialog)
-		self.editDialog.makeConnections()
-
-		uic.loadUi(os.path.join(helix.root, 'ui', 'showCreation.ui'), self.showCreationDialog)
-		self.showCreationDialog.makeConnections()
-
-		uic.loadUi(os.path.join(helix.root, 'ui', 'seqCreation.ui'), self.seqCreationDialog)
-		self.seqCreationDialog.makeConnections()
-
-		uic.loadUi(os.path.join(helix.root, 'ui', 'shotCreation.ui'), self.shotCreationDialog)
-		self.shotCreationDialog.makeConnections()
-
-		uic.loadUi(os.path.join(helix.root, 'ui', 'elementCreation.ui'), self.elementCreationDialog)
-		self.elementCreationDialog.makeConnections()
-
-		uic.loadUi(os.path.join(helix.root, 'ui', 'rollbackDialog.ui'), self.rollbackDialog)
-		self.rollbackDialog.makeConnections()
-
-		uic.loadUi(os.path.join(helix.root, 'ui', 'importElementDialog.ui'), self.importElementDialog)
-		self.importElementDialog.makeConnections()
-
+		# Find dialog is created like this as an easy way to preserve user's session settings for the search fields
+		self.findDialog = FindDialog(self)
 		uic.loadUi(os.path.join(helix.root, 'ui', 'find.ui'), self.findDialog)
 		self.findDialog.makeConnections()
 
@@ -973,6 +1064,18 @@ class ManagerWindow(QMainWindow):
 
 		# TODO: Save/Restore current data selection
 		# TODO: Update Window > menu option when dock is closed
+
+	def restoreFactorySettings(self):
+		self.mainDock.show()
+		self.elListDock.show()
+		self.console.hide()
+		self.globalElViewer.hide()
+
+		self.addDockWidget(Qt.TopDockWidgetArea, self.mainDock)
+		self.addDockWidget(Qt.BottomDockWidgetArea, self.elListDock)
+
+		self.setGeometry(0, 0, 1050, 720)
+
 
 	def saveSettings(self, version=0):
 		settings = QSettings()
@@ -1040,6 +1143,7 @@ class ManagerWindow(QMainWindow):
 		self.ACT_editProperties.triggered.connect(self.handleGetProperties)
 		self.ACT_explorer.triggered.connect(self.handleExplorer)
 		self.ACT_importElement.triggered.connect(self.handleImportElement)
+		self.ACT_export.triggered.connect(self.handleExport)
 		self.VIEW_cols.doubleClicked.connect(self.handleDataEdit)
 		self.ACT_find.triggered.connect(self.findDialog.show)
 		self.ACT_prefGeneral.triggered.connect(lambda: self.handleConfigEditor(0))
@@ -1050,6 +1154,8 @@ class ManagerWindow(QMainWindow):
 		self.ACT_elList.triggered.connect(self.toggleElList)
 		self.ACT_globalElView.triggered.connect(self.toggleElementViewer)
 		self.ACT_console.triggered.connect(self.toggleConsole)
+		self.ACT_wsReset.triggered.connect(lambda: self.restoreSettings(0))
+		self.ACT_wsFullReset.triggered.connect(self.restoreFactorySettings)
 		self.ACT_load1.triggered.connect(lambda: self.restoreSettings(1))
 		self.ACT_load2.triggered.connect(lambda: self.restoreSettings(2))
 		self.ACT_load3.triggered.connect(lambda: self.restoreSettings(3))
@@ -1125,7 +1231,10 @@ class ManagerWindow(QMainWindow):
 		SlapCompDialog(item, self).show()
 
 	def handleImportElement(self):
-		self.importElementDialog.show()
+		ImportElementDialog(self).show()
+
+	def handleExport(self):
+		ExportDialog(self).show()
 
 	def handleElementFilterUpdate(self):
 		self.elTypeFilter = []
@@ -1169,7 +1278,7 @@ class ManagerWindow(QMainWindow):
 			diff.resolve(discard=resp!=QMessageBox.Yes)
 
 	def handleNewShow(self):
-		self.showCreationDialog.show()
+		NewShowDialog(self).show()
 
 	def handleNewSequence(self):
 		index = self.VIEW_cols.selectionModel().currentIndex()
@@ -1186,7 +1295,7 @@ class ManagerWindow(QMainWindow):
 			parent = parent.parent()
 
 		# data is now the Show
-		self.seqCreationDialog.show(data.alias)
+		NewSequenceDialog(self, data.alias).show()
 
 	def handleNewShot(self):
 		index = self.VIEW_cols.selectionModel().currentIndex()
@@ -1207,7 +1316,7 @@ class ManagerWindow(QMainWindow):
 			parent = parent.parent()
 
 		# data is now the Show
-		self.shotCreationDialog.show(data.alias, seq.num)
+		NewShotDialog(self, data.alias, seq.num).show()
 
 	def handleNewElement(self):
 		index = self.VIEW_cols.selectionModel().currentIndex()
@@ -1231,7 +1340,7 @@ class ManagerWindow(QMainWindow):
 			parent = parent.parent()
 
 		# data is now the Show
-		self.elementCreationDialog.show(data, seq, shot)
+		NewElementDialog(self, data, seq, shot).show()
 
 	def handleDataEdit(self, index):
 		if not index.isValid():
@@ -1239,8 +1348,7 @@ class ManagerWindow(QMainWindow):
 
 		item = index.internalPointer().data(0)
 
-		self.editDialog.setItem(item)
-		self.editDialog.show()
+		EditingDialog(self, item).show()
 
 	def handleGetProperties(self):
 		item = self.elementList.currentItem()
@@ -1348,6 +1456,11 @@ class ManagerWindow(QMainWindow):
 
 		if os.path.exists(self.dbLoc):
 			env.setEnvironment('DB', self.dbLoc)
+
+			from helix.database.sql import Manager
+			with Manager() as mgr:
+				mgr.initTables()
+
 			self.model = ShowModel(db.getShows())
 
 			self.VIEW_cols.setModel(self.model)
@@ -1466,8 +1579,7 @@ class BasicElementView(QTableWidget):
 		if not isinstance(item, ElementTableItem):
 			return
 
-		self.parent.editDialog.setItem(item.element)
-		self.parent.editDialog.show()
+		EditingDialog(self.parent, item.element).show()
 
 if __name__ == '__main__':
 	app = QApplication(sys.argv)

@@ -29,6 +29,37 @@ def parseFilePath(filePath):
 
 	return (os.path.splitext(fileName)[0], '', os.path.splitext(fileName)[1])
 
+def relativeCopyTree(src, dst, overwriteOption=0):
+	working_dir = os.getcwd()
+	os.chdir(src)
+
+	for root, dirs, files in os.walk('.'):
+		curdest = os.path.join(dst, root)
+
+		for d in dirs:
+			dirDest = os.path.join(curdest, d)
+
+			if not os.path.isdir(dirDest):
+				os.mkdir(dirDest)
+		for f in files:
+			fromfile = os.path.join(root, f)
+			to = os.path.join(curdest, f)
+
+			if os.path.exists(to):
+				# Evaluate based on overwriteOption
+				if overwriteOption == 0: # Overwrite
+					shutil.copy2(fromfile, to)
+				elif overwriteOption == 1: # Version up
+					shutil.copy2(fromfile, getNextVersionOfFile(to))
+				else: # Skip
+					if env.DEBUG:
+						print 'Skipped copying {}'.format(fromfile)
+					continue
+			else:
+				shutil.copy2(fromfile, to)
+
+	os.chdir(working_dir)
+
 def linkPath(src, dest):
 	if os.path.isdir(src):
 		working_dir = os.getcwd()

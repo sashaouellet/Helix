@@ -184,36 +184,36 @@ def importEl(dir, elType, name=None, sequence=None, shot=None, clipName=None, ov
 	if not el.exists():
 		el.insert()
 
-	working_dir = os.getcwd()
-	os.chdir(dir)
+	fileutils.relativeCopyTree(dir, el.work_path, overwriteOption)
 
-	for root, dirs, files in os.walk('.'):
-		curdest = os.path.join(el.work_path, root)
+def export(dir, show, elType, name=None, sequence=None, shot=None, clipName=None, work=False, release=False):
+	perms.check('helix.export.element')
 
-		for d in dirs:
-			dirDest = os.path.join(curdest, d)
+	if not os.path.isdir(dir):
+		raise ValueError('Not a directory: {}'.format(dir))
 
-			if not os.path.isdir(dirDest):
-				os.mkdir(dirDest)
-		for f in files:
-			fromfile = os.path.join(root, f)
-			to = os.path.join(curdest, f)
+	el = Element(name, elType, show=show, sequence=sequence, shot=shot, clipName=clipName)
 
-			if os.path.exists(to):
-				# Evaluate based on overwriteOption
-				if overwriteOption == 0: # Overwrite
-					shutil.copy2(fromfile, to)
-				elif overwriteOption == 1: # Version up
-					print to
-					shutil.copy2(fromfile, fileutils.getNextVersionOfFile(to))
-				else: # Skip
-					if env.DEBUG:
-						print 'Skipped copying {}'.format(fromfile)
-					continue
-			else:
-				shutil.copy2(fromfile, to)
+	if not el.exists():
+		raise ValueError('Given element does not exist')
 
-	os.chdir(working_dir)
+	date = str(env.getCreationInfo(format=False)[1].date())
+
+	if work:
+		finalDest = os.path.join(dir, 'work_' + el._rawId + '_' + date)
+
+		if not os.path.exists(finalDest):
+			os.makedirs(finalDest)
+
+		fileutils.relativeCopyTree(el.work_path, finalDest)
+
+	if release:
+		finalDest = os.path.join(dir, 'release_' + el._rawId + '_' + date)
+
+		if not os.path.exists(finalDest):
+			os.makedirs(finalDest)
+
+		fileutils.relativeCopyTree(el.release_path, finalDest)
 
 def clone(show=None, sequence=None, shot=None):
 	# TODO: consider an option for also cloning the work and/or release dirs of the element
@@ -355,7 +355,7 @@ def getenv():
 
 def main(cmd, argv):
 	if cmd == 'pop':
-		parser = argparse.ArgumentParser(prog='pop', description='Pop into a specific show')
+		parser = HelixArgumentParser(prog='pop', description='Pop into a specific show')
 
 		parser.add_argument('showName', help='The 4-5 letter code for the show name')
 
@@ -363,7 +363,7 @@ def main(cmd, argv):
 
 		return pop(**args)
 	elif cmd == 'mkshow':
-		parser = argparse.ArgumentParser(prog='mkshow', description='Make a new show')
+		parser = HelixArgumentParser(prog='mkshow', description='Make a new show')
 
 		parser.add_argument('alias', help='The alias of the show. Has character restrictions (i.e. no spaces or special characters)')
 		parser.add_argument('--name', '-n', help='The full name of the show. Please surround with double quotes (").')
@@ -372,7 +372,7 @@ def main(cmd, argv):
 
 		return mkshow(**args)
 	elif cmd == 'rmshow':
-		parser = argparse.ArgumentParser(prog='rmshow', description='Delete an existing show. Optionally also remove associated files from disk.')
+		parser = HelixArgumentParser(prog='rmshow', description='Delete an existing show. Optionally also remove associated files from disk.')
 
 		parser.add_argument('showName', help='The name of the show. Surround in quotes for multi-word names.')
 		parser.add_argument('--clean', '-c', action='store_true', help='Remove associated files/directories for this show')
@@ -391,7 +391,7 @@ def main(cmd, argv):
 			print 'Please pop into a show first'
 			return
 
-		parser = argparse.ArgumentParser(prog='mkseq', description='Make a new sequence in the current show')
+		parser = HelixArgumentParser(prog='mkseq', description='Make a new sequence in the current show')
 
 		parser.add_argument('seqNum', help='The number of the sequence')
 
@@ -403,7 +403,7 @@ def main(cmd, argv):
 			print 'Please pop into a show first'
 			return
 
-		parser = argparse.ArgumentParser(prog='rmseq', description='Remove an existing sequence from the current show')
+		parser = HelixArgumentParser(prog='rmseq', description='Remove an existing sequence from the current show')
 
 		parser.add_argument('seqNum', help='The number of the sequence')
 		parser.add_argument('--clean', '-c', action='store_true', help='Remove associated files/directories for this sequence')
@@ -416,7 +416,7 @@ def main(cmd, argv):
 			print 'Please pop into a show first'
 			return
 
-		parser = argparse.ArgumentParser(prog='mkshot', description='Make a new shot in the current show for the given sequence.')
+		parser = HelixArgumentParser(prog='mkshot', description='Make a new shot in the current show for the given sequence.')
 
 		parser.add_argument('seqNum', help='The number of the sequence to make the shot in')
 		parser.add_argument('shotNum', help='The number of the shot to make')
@@ -432,7 +432,7 @@ def main(cmd, argv):
 			print 'Please pop into a show first'
 			return
 
-		parser = argparse.ArgumentParser(prog='rmshot', description='Remove an existing shot in the current show for the given sequence.')
+		parser = HelixArgumentParser(prog='rmshot', description='Remove an existing shot in the current show for the given sequence.')
 
 		parser.add_argument('seqNum', help='The number of the sequence to remove the shot from')
 		parser.add_argument('shotNum', help='The number of the shot to remove')
@@ -447,7 +447,7 @@ def main(cmd, argv):
 			print 'Please pop into a show first'
 			return
 
-		parser = argparse.ArgumentParser(prog='mke', description='Make an element (Set, Character, Prop, Effect, etc.)')
+		parser = HelixArgumentParser(prog='mke', description='Make an element (Set, Character, Prop, Effect, etc.)')
 
 		parser.add_argument('elType', help='The type of element (Set, Character, Prop, Effect, etc.) to make')
 		parser.add_argument('name', help='The name of the element that will be made (i.e. Table). Specify "-" to indicate no name (but sequence and shot must be specified)')
@@ -475,7 +475,7 @@ def main(cmd, argv):
 			print 'Please pop into a show first'
 			return
 
-		parser = argparse.ArgumentParser(prog='rme', description='Remove an exisiting element')
+		parser = HelixArgumentParser(prog='rme', description='Remove an exisiting element')
 
 		parser.add_argument('elType', help='The type of element')
 		parser.add_argument('name', help='The name of the element')
@@ -492,7 +492,7 @@ def main(cmd, argv):
 			print 'Please pop into a show first'
 			return
 
-		parser = argparse.ArgumentParser(prog='get', description='Get an already existing element to work on')
+		parser = HelixArgumentParser(prog='get', description='Get an already existing element to work on')
 
 		parser.add_argument('elType', help='The type of element')
 		parser.add_argument('name', help='The name of the element')
@@ -508,7 +508,7 @@ def main(cmd, argv):
 			print 'Please get an element to work on first'
 			return
 
-		parser = argparse.ArgumentParser(prog='pub', description='Publish a new version of the current working element')
+		parser = HelixArgumentParser(prog='pub', description='Publish a new version of the current working element')
 
 		parser.add_argument('file', help='The path to the file OR frame from a sequence OR directory to publish')
 		parser.add_argument('--range', '-r', type=int, nargs='+', default=None, help='The number range to publish a given frame sequence with. By default will attempt to publish the largest range found.')
@@ -528,7 +528,7 @@ def main(cmd, argv):
 			print 'Please get an element to work on first'
 			return
 
-		parser = argparse.ArgumentParser(prog='roll', description='Rolls back the current element\'s published file to the previous version, or a specific one if specified.')
+		parser = HelixArgumentParser(prog='roll', description='Rolls back the current element\'s published file to the previous version, or a specific one if specified.')
 
 		parser.add_argument('--version', '-v', default=None, help='Specify a specific version to rollback to.')
 
@@ -540,7 +540,7 @@ def main(cmd, argv):
 			print 'Please get an element to work on first'
 			return
 
-		parser = argparse.ArgumentParser(prog='mod', description='Modify attributes regarding the current working element')
+		parser = HelixArgumentParser(prog='mod', description='Modify attributes regarding the current working element')
 
 		parser.add_argument('attribute', help='The name of the attribute you are trying to modify (i.e. ext if you wish to change the expected extension this element produces')
 		parser.add_argument('value', nargs='?', default=None, help='The value to set the given attribute to. Can be omitted to retrieve the current value instead')
@@ -553,7 +553,7 @@ def main(cmd, argv):
 			print 'Please get an element to work on first'
 			return
 
-		parser = argparse.ArgumentParser(prog='override', description='Override the current element for work in a different sequence or shot. If both sequence and shot are omitted, prints the current overrides instead. By omitting shot, the element can be overridden for a sequence in general.')
+		parser = HelixArgumentParser(prog='override', description='Override the current element for work in a different sequence or shot. If both sequence and shot are omitted, prints the current overrides instead. By omitting shot, the element can be overridden for a sequence in general.')
 
 		parser.add_argument('--sequence', '-sq', default=None, help='The sequence number to override the element into')
 		parser.add_argument('--shot', '-s', default=None, help='The shot number to override the element into.')
@@ -566,7 +566,7 @@ def main(cmd, argv):
 			print 'Please get an element to work on first'
 			return
 
-		parser = argparse.ArgumentParser(prog='file', description='Assigns the given file path to be this element\'s work file.')
+		parser = HelixArgumentParser(prog='file', description='Assigns the given file path to be this element\'s work file.')
 
 		parser.add_argument('path', nargs='?', default=None, help='The path to the file that should become the work file for this element')
 
@@ -578,7 +578,7 @@ def main(cmd, argv):
 			print 'Please pop into a show first'
 			return
 
-		parser = argparse.ArgumentParser(prog='import', description='Imports a directory to become a new element if it doesn\'t exist, or into an existing element.')
+		parser = HelixArgumentParser(prog='import', description='Imports a directory to become a new element if it doesn\'t exist, or into an existing element.')
 
 		parser.add_argument('dir', help='The full path to the directory of files associated with the element to import into or create.')
 		parser.add_argument('elType', help='The element type of the element')
@@ -591,12 +591,28 @@ def main(cmd, argv):
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
 		return importEl(**args)
+	elif cmd == 'export':
+		parser = HelixArgumentParser(prog='import', description='Imports a directory to become a new element if it doesn\'t exist, or into an existing element.')
+
+		parser.add_argument('dir', help='The full path to the directory where the exported element should be placed.')
+		parser.add_argument('show', help='The element\'s show')
+		parser.add_argument('elType', default=None, help='The name of the element to export. Will be considered a nameless element if this flag is excluded.')
+		parser.add_argument('--name', '-n', default=None, help='The name of the element to export. Will be considered a nameless element if this flag is excluded.')
+		parser.add_argument('--sequence', '-sq', default=None, help='The sequence number of the element')
+		parser.add_argument('--shot', '-s', default=None, help='The shot number of the element')
+		parser.add_argument('--clipName', '-c', default=None, help='The clip name of the element\'s shot')
+		parser.add_argument('--work', '-w', default=False, action='store_true', help='If included, the element\'s work tree is exported.')
+		parser.add_argument('--release', '-r', default=None, action='store_true', help='If included, the element\'s release tree is exported.')
+
+		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
+
+		return export(**args)
 	elif cmd == 'els' or cmd == 'elements':
 		if not env.getEnvironment('show'):
 			print 'Please pop into a show first'
 			return
 
-		parser = argparse.ArgumentParser(prog='elements', description='List all elements for the current show')
+		parser = HelixArgumentParser(prog='elements', description='List all elements for the current show')
 
 		parser.add_argument('elType', help='A comma separated list of elements to filter by', default=None, nargs='?')
 		parser.add_argument('--sequence', '-sq', default=None, help='The sequence number to get elements from')
@@ -610,7 +626,7 @@ def main(cmd, argv):
 			print 'Please pop into a show first'
 			return
 
-		parser = argparse.ArgumentParser(prog='shots', description='List all shots for the current show, given a sequence number.')
+		parser = HelixArgumentParser(prog='shots', description='List all shots for the current show, given a sequence number.')
 
 		parser.add_argument('seqNum', help='The sequence number')
 
@@ -622,12 +638,12 @@ def main(cmd, argv):
 			print 'Please pop into a show first'
 			return
 
-		parser = argparse.ArgumentParser(prog='sequences', description='List all sequences for the current show.')
+		parser = HelixArgumentParser(prog='sequences', description='List all sequences for the current show.')
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
 		return sequences(**args)
 	elif cmd == 'shows':
-		parser = argparse.ArgumentParser(prog='shows', description='List all shows in this database')
+		parser = HelixArgumentParser(prog='shows', description='List all shows in this database')
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
 		return shows(**args)
@@ -654,7 +670,7 @@ def main(cmd, argv):
 
 	# Debug commands
 	elif cmd == 'dump':
-		parser = argparse.ArgumentParser(prog='dump', description='Dumps the database contents to stdout')
+		parser = HelixArgumentParser(prog='dump', description='Dumps the database contents to stdout')
 
 		parser.add_argument('--expanded', '-e', action='store_true', help='Whether each DatabaseObject is fully expanded in the print out')
 
@@ -662,7 +678,7 @@ def main(cmd, argv):
 
 		return dump(**args)
 	elif cmd == 'getenv':
-		parser = argparse.ArgumentParser(prog='getenv', description='Gets the custom environment variables that have been set by the Helix system')
+		parser = HelixArgumentParser(prog='getenv', description='Gets the custom environment variables that have been set by the Helix system')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
@@ -678,6 +694,14 @@ def main(cmd, argv):
 		exit()
 	else:
 		print 'Unknown command: {}'.format(cmd)
+
+class HelixArgumentParser(argparse.ArgumentParser):
+	def error(self, message):
+		raise CommandError(message)
+
+	def exit(self, status=0, message=None):
+		if message:
+			print message
 
 def exit():
 	sys.exit(0)
@@ -695,14 +719,10 @@ def handleInput(line):
 
 		try:
 			return main(cmd, argv[1:])
-		except SystemExit as e:
-			# I really don't like this, but not sure how to handle
-			# the exception argparse raises when typing an invalid command
-			pass
 		except Exception as e:
 			if env.DEBUG:
 				print traceback.format_exc()
-			elif env.HAS_UI:
+			elif env.HAS_UI and not isinstance(e, CommandError):
 				from PyQt4.QtGui import QApplication
 				from helix.utils.qtutils import ExceptionDialog
 

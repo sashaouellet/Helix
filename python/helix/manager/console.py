@@ -28,7 +28,14 @@ class Console(QDockWidget):
 		# self.output.setTextBackgroundColor()
 		self.output.setReadOnly(True)
 
+		font = QFont()
+		font.setFamily('monospace [Consolas]')
+		font.setFixedPitch(True)
+		font.setStyleHint(QFont.TypeWriter)
+		self.output.setFont(font)
+
 		self.input = CommandLineEdit(self)
+		self.input.setFont(font)
 
 		self.layout.addWidget(self.output)
 		self.layout.addWidget(self.input)

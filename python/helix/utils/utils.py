@@ -1,6 +1,17 @@
 import calendar
 from datetime import datetime, timedelta
 import re
+import sys
+from contextlib import contextmanager
+
+@contextmanager
+def stdout_redirector(stream):
+	old_stdout = sys.stdout
+	sys.stdout = stream
+	try:
+		yield
+	finally:
+		sys.stdout = old_stdout
 
 def utcToLocal(utcDT):
 	"""Converts the given datetime object (naive, UTC) into a datetime object

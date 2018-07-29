@@ -45,7 +45,7 @@ class FileChooserLayout(QHBoxLayout):
 	FOLDER = 1
 	ANY = 2
 
-	fileChosenSignal = pyqtSignal(str)
+	fileChosen = pyqtSignal(str)
 
 	def __init__(self, parent, label=None, defaultText='', browseCaption='', filter='', selectionMode=FILE, completer=True):
 		super(FileChooserLayout, self).__init__()
@@ -83,7 +83,7 @@ class FileChooserLayout(QHBoxLayout):
 		self.LNE_selection.textChanged.connect(self.handleFileChange)
 
 	def handleFileChange(self):
-		self.fileChosenSignal.emit(str(self.LNE_selection.text()))
+		self.fileChosen.emit(str(self.LNE_selection.text()))
 
 	def handleBrowse(self):
 		start = str(self.LNE_selection.text()) if os.path.exists(str(self.LNE_selection.text())) else os.path.expanduser('~')
@@ -108,7 +108,17 @@ class FileChooserLayout(QHBoxLayout):
 
 		if file and os.path.exists(file):
 			self.LNE_selection.setText(file)
-			self.fileChosenSignal.emit(file)
+			self.fileChosen.emit(file)
+
+class ElementListWidgetItem(QListWidgetItem):
+	def __init__(self, element, parent=None):
+		super(ElementListWidgetItem, self).__init__(parent=parent)
+
+		self.element = element
+
+	def data(self, role):
+		if role == Qt.DisplayRole:
+			return str(self.element)
 
 class Node(object):
 	def __init__(self, data=None):
@@ -152,3 +162,42 @@ class Node(object):
 		self._colCount = max(child.columnCount(), self._colCount)
 
 		return child
+
+class Operation(object):
+	def __init__(self, numOps=0, parent=None):
+		self.progressDialog = None
+
+		if numOps > 0:
+			self.progressDialog = QProgressDialog(parent, Qt.Popup|Qt.WindowStaysOnTopHint|Qt.X11BypassWindowManagerHint)
+			self.progressDialog.setMaximum(numOps)
+			self.progressDialog.setAutoClose(False)
+			self.progressDialog.setMinimumDuration(0)
+
+	def __enter__(self):
+		QApplication.instance().setOverrideCursor(QCursor(Qt.WaitCursor))
+
+		if self.progressDialog:
+			self.progressDialog.show()
+			self.progressDialog.setWindowState(self.progressDialog.windowState() & Qt.WindowMinimized | Qt.WindowActive)
+			self.progressDialog.raise_()
+			self.progressDialog.activateWindow()
+			self.progressDialog.setValue(0)
+
+		return self
+
+	def updateLabel(self, label):
+		if self.progressDialog:
+			self.progressDialog.setLabelText(label)
+
+	def tick(self):
+		if self.progressDialog:
+			self.progressDialog.setValue(self.progressDialog.value() + 1)
+
+	def __exit__(self, exception_type, exception_value, traceback):
+		if self.progressDialog:
+			self.progressDialog.setValue(self.progressDialog.maximum())
+			self.progressDialog.close()
+		QApplication.instance().restoreOverrideCursor()
+
+
+

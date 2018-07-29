@@ -489,16 +489,18 @@ class Element(DatabaseObject):
 		return self.name + ' (' + self.type + ')'
 
 	@property
-	def id(self):
-		return super(Element, self)._id(
-			'{}_{}_{}_{}_{}'.format(
+	def _rawId(self):
+		return '{}_{}_{}_{}_{}'.format(
 				self.show,
 				self.sequence if self.sequence else '',
 				self.shot if self.shot else '',
 				self.name,
 				self.type
 			)
-		)
+
+	@property
+	def id(self):
+		return super(Element, self)._id(self._rawId)
 
 	@property
 	def directory(self):

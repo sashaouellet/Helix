@@ -1,17 +1,13 @@
 import sqlite3
 import os
 
-from helix.database.database import *
-import helix.environment.environment as env
-from helix.database.person import Person
-from helix.database.show import Show
-
 class Manager(object):
 	TABLE_LIST = [
 					'shows',
 					'sequences',
 					'shots',
 					'elements',
+					'checkpoints',
 					'takes',
 					'publishedFiles',
 					'fixes',
@@ -19,6 +15,8 @@ class Manager(object):
 				]
 
 	def __init__(self, location=None, willCommit=True):
+		import helix.environment.environment as env
+
 		if location:
 			self.location = location
 		else:
@@ -51,6 +49,8 @@ class Manager(object):
 		return [(str(r[1]), bool(r[3])) for r in self.conn.execute('PRAGMA TABLE_INFO ({})'.format(table)).fetchall()]
 
 	def _insert(self, table, obj):
+		from helix.database.database import DatabaseObject
+
 		if isinstance(obj, tuple):
 			values = obj
 		elif isinstance(obj, DatabaseObject):
@@ -128,8 +128,6 @@ class Manager(object):
 				'start'			INTEGER,
 				'end'			INTEGER,
 				'clipName'		TEXT,
-				'status'		TEXT NOT NULL,
-				'assigned_to'	VARCHAR(10),
 				'take'			INTEGER,
 				'thumbnail'		TEXT,
 				'work_path'		TEXT NOT NULL,
@@ -138,7 +136,6 @@ class Manager(object):
 				'creation'		DATE NOT NULL,
 				FOREIGN KEY('author') REFERENCES 'people'('username'),
 				FOREIGN KEY('show') REFERENCES 'shows'('alias'),
-				FOREIGN KEY('assigned_to') REFERENCES 'people'('username'),
 				FOREIGN KEY('sequenceId') REFERENCES 'sequences'('id')
 			)
 		'''
@@ -168,6 +165,32 @@ class Manager(object):
 				FOREIGN KEY('author') REFERENCES 'people'('username'),
 				FOREIGN KEY('shotId') REFERENCES 'shots'('id'),
 				FOREIGN KEY('sequenceId') REFERENCES 'sequences'('id')
+			)
+		'''
+		)
+		self.conn.execute(
+		'''
+			CREATE TABLE IF NOT EXISTS 'checkpoints' (
+				'shotId'			VARCHAR(32) PRIMARY KEY NOT NULL UNIQUE,
+				'show'				VARCHAR(10) NOT NULL,
+				'new'				DATE NOT NULL,
+				'layout'			DATE,
+				'camera_polish'		DATE,
+				'editorial'			DATE,
+				'lock_for_anim' 	DATE,
+				'anim_rough'		DATE,
+				'anim_final'		DATE,
+				'set_decoration'	DATE,
+				'shading'			DATE,
+				'master_lighting'	DATE,
+				'shot_lighting'		DATE,
+				'fx'				DATE,
+				'cfx'				DATE,
+				'comp'				DATE,
+				'director_review'	DATE,
+				'delivered'			DATE,
+				FOREIGN KEY('shotId') REFERENCES 'shots'('id'),
+				FOREIGN KEY('show') REFERENCES 'shows'('alias')
 			)
 		'''
 		)

@@ -26,3 +26,6 @@ class ImportError(HelixException):
 
 class EnvironmentError(HelixException):
 	pass
+
+class CommandError(HelixException):
+	pass

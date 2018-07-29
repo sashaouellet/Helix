@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>707</width>
-    <height>464</height>
+    <height>560</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -34,13 +34,16 @@ Otherwise, the contents of the folder will be copied to the existing asset.</str
     </widget>
    </item>
    <item>
-    <widget class="QGroupBox" name="groupBox">
+    <widget class="QGroupBox" name="GRP_import">
      <property name="title">
       <string>Import options</string>
      </property>
      <layout class="QFormLayout" name="formLayout">
       <property name="fieldGrowthPolicy">
        <enum>QFormLayout::ExpandingFieldsGrow</enum>
+      </property>
+      <property name="formAlignment">
+       <set>Qt::AlignCenter</set>
       </property>
       <item row="0" column="0">
        <widget class="QLabel" name="LBL_folder">
@@ -51,9 +54,6 @@ Otherwise, the contents of the folder will be copied to the existing asset.</str
          <string>Folder</string>
         </property>
        </widget>
-      </item>
-      <item row="0" column="1">
-       <layout class="QHBoxLayout" name="LAY_folderSelect"/>
       </item>
       <item row="1" column="1">
        <layout class="QHBoxLayout" name="horizontalLayout_2">
@@ -103,6 +103,9 @@ Otherwise, the contents of the folder will be copied to the existing asset.</str
         </property>
        </widget>
       </item>
+      <item row="0" column="1">
+       <layout class="QHBoxLayout" name="LAY_folderSelect"/>
+      </item>
      </layout>
     </widget>
    </item>
@@ -118,7 +121,7 @@ Otherwise, the contents of the folder will be copied to the existing asset.</str
       <property name="labelAlignment">
        <set>Qt::AlignBottom|Qt::AlignRight|Qt::AlignTrailing</set>
       </property>
-      <item row="0" column="0">
+      <item row="1" column="0">
        <widget class="QLabel" name="LBL_name">
         <property name="toolTip">
          <string>The name of the element you want to create.</string>
@@ -128,10 +131,10 @@ Otherwise, the contents of the folder will be copied to the existing asset.</str
         </property>
        </widget>
       </item>
-      <item row="0" column="1">
+      <item row="1" column="1">
        <widget class="QLineEdit" name="LNE_name"/>
       </item>
-      <item row="1" column="1">
+      <item row="2" column="1">
        <widget class="QCheckBox" name="CHK_nameless">
         <property name="toolTip">
          <string>In most cases, elements should have names. However, it may make more sense for some elements to live directly underneath their type folder, rather than an additional subfolder. When set to &quot;nameless,&quot; the element will be given an internal name. This is useful for elements like ingested background plates.</string>
@@ -141,7 +144,7 @@ Otherwise, the contents of the folder will be copied to the existing asset.</str
         </property>
        </widget>
       </item>
-      <item row="2" column="0">
+      <item row="3" column="0">
        <widget class="QLabel" name="LBL_type">
         <property name="toolTip">
          <string>The type of the element you want to create.</string>
@@ -151,38 +154,45 @@ Otherwise, the contents of the folder will be copied to the existing asset.</str
         </property>
        </widget>
       </item>
-      <item row="2" column="1">
+      <item row="3" column="1">
        <widget class="QComboBox" name="CMB_type"/>
       </item>
-      <item row="3" column="0">
+      <item row="4" column="0">
        <widget class="QLabel" name="LBL_show">
         <property name="text">
          <string>Show:</string>
         </property>
        </widget>
       </item>
-      <item row="3" column="1">
+      <item row="4" column="1">
        <widget class="QComboBox" name="CMB_show"/>
       </item>
-      <item row="4" column="0">
+      <item row="5" column="0">
        <widget class="QLabel" name="LBL_seq">
         <property name="text">
          <string>Sequence:</string>
         </property>
        </widget>
       </item>
-      <item row="4" column="1">
+      <item row="5" column="1">
        <widget class="QComboBox" name="CMB_seq"/>
       </item>
-      <item row="5" column="0">
+      <item row="6" column="0">
        <widget class="QLabel" name="LBL_shot">
         <property name="text">
          <string>Shot:</string>
         </property>
        </widget>
       </item>
-      <item row="5" column="1">
+      <item row="6" column="1">
        <widget class="QComboBox" name="CMB_shot"/>
+      </item>
+      <item row="0" column="1">
+       <widget class="QPushButton" name="BTN_assetBrowse">
+        <property name="text">
+         <string>Browse for asset...</string>
+        </property>
+       </widget>
       </item>
      </layout>
     </widget>
@@ -207,12 +217,24 @@ Otherwise, the contents of the folder will be copied to the existing asset.</str
        <property name="text">
         <string>Cancel</string>
        </property>
+       <property name="autoDefault">
+        <bool>false</bool>
+       </property>
       </widget>
      </item>
      <item>
       <widget class="QPushButton" name="BTN_import">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
        <property name="text">
         <string>Import</string>
+       </property>
+       <property name="autoDefault">
+        <bool>false</bool>
+       </property>
+       <property name="default">
+        <bool>true</bool>
        </property>
       </widget>
      </item>

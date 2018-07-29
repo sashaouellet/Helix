@@ -306,6 +306,7 @@ class ElementPickerDialog(QDialog):
 		self.mainLayout.addWidget(self.elementViewerWidget)
 		self.mainLayout.addLayout(self.buttonLayout)
 
+		self.setWindowTitle('Asset Browser')
 		self.setLayout(self.mainLayout)
 		self.makeConnections()
 		self.resize(800, 600)
@@ -325,6 +326,12 @@ class ElementPickerDialog(QDialog):
 			return
 
 		super(ElementPickerDialog, self).accept()
+
+	def reject(self):
+		self.elementViewerWidget.elementsView.selectionModel().clearSelection()
+		self.selected = []
+
+		super(ElementPickerDialog, self).reject()
 
 	def makeConnections(self):
 		self.okButton.clicked.connect(self.accept)

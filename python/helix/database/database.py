@@ -13,10 +13,13 @@ __date__    = 07/28/18
 """
 import sqlite3
 import hashlib
+from helix.database.sql import Manager
+
+with Manager() as mgr:
+	mgr.initTables()
 
 class DatabaseObject(object):
 	def get(self, attr, default=None):
-		from helix.database.sql import Manager
 		with Manager(willCommit=False) as mgr:
 			try:
 				return mgr.connection().execute('SELECT {} FROM {} WHERE {}="{}"'.format(attr, self.table, self.pk, getattr(self, self.pk, None))).fetchone()[0]
@@ -25,7 +28,6 @@ class DatabaseObject(object):
 				return default
 
 	def set(self, attr, val, insertIfMissing=False):
-		from helix.database.sql import Manager
 		with Manager() as mgr:
 			if self.exists():
 				mgr.connection().execute("UPDATE {} SET {}='{}' WHERE {}='{}'".format(self.table, attr, val, self.pk, getattr(self, self.pk)))
@@ -35,7 +37,6 @@ class DatabaseObject(object):
 					self.insert()
 
 	def insert(self):
-		from helix.database.sql import Manager
 		with Manager() as mgr:
 			self._exists = mgr._insert(self.table, self)
 
@@ -46,8 +47,6 @@ class DatabaseObject(object):
 		# it from the DB or made a new one
 		if self._exists is not None and not fetch:
 			return self._exists
-
-		from helix.database.sql import Manager
 
 		with Manager(willCommit=False) as mgr:
 			try:
@@ -68,8 +67,6 @@ class DatabaseObject(object):
 	def fromPk(cls, pk):
 		if not pk:
 			return None
-
-		from helix.database.sql import Manager
 
 		with Manager(willCommit=False) as mgr:
 			query = """SELECT * FROM {} WHERE {}='{}'""".format(
@@ -92,7 +89,6 @@ class DatabaseObject(object):
 		return hashlib.md5(token).hexdigest()
 
 	def map(self):
-		from helix.database.sql import Manager
 		with Manager(willCommit=False) as mgr:
 			values = ()
 
@@ -107,7 +103,6 @@ class DatabaseObject(object):
 			return values
 
 	def unmap(self, values):
-		from helix.database.sql import Manager
 		with Manager(willCommit=False) as mgr:
 			for col, val in zip([c[0] for c in mgr.getColumnNames(self.table)], list(values)):
 				try:
@@ -127,7 +122,6 @@ class DatabaseObject(object):
 		raise NotImplementedError()
 
 	def __repr__(self):
-		from helix.database.sql import Manager
 		with Manager(willCommit=False) as mgr:
 			vals = []
 
@@ -151,7 +145,6 @@ class DatabaseObject(object):
 		return not (self == other)
 
 def getShows():
-	from helix.database.sql import Manager
 	from helix.database.show import Show
 	with Manager(willCommit=False) as mgr:
 		query = """SELECT * FROM {}""".format(Show.TABLE)
@@ -164,7 +157,6 @@ def getShows():
 		return shows
 
 def getShow(alias):
-	from helix.database.sql import Manager
 	from helix.database.show import Show
 	with Manager(willCommit=False) as mgr:
 		query = """SELECT * FROM {} WHERE alias='{}'""".format(Show.TABLE, alias)
@@ -174,3 +166,16 @@ def getShow(alias):
 			return Show.dummy().unmap(row)
 
 		return None
+
+def getElements():
+	from helix.database.element import Element
+	with Manager(willCommit=False) as mgr:
+		query = """SELECT * FROM {}""".format(Element.TABLE)
+		rows = mgr.connection().execute(query).fetchall()
+		elements = []
+
+		for r in rows:
+			elements.append(Element.dummy().unmap(r))
+
+		return elements
+

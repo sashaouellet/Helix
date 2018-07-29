@@ -10,23 +10,7 @@ from helix.utils.fileutils import SHOT_FORMAT
 class Shot(ElementContainer):
 	TABLE = 'shots'
 	PK = 'id'
-	STATUS = { # TODO: configurable
-		0: 'new', # Should always be first though
-		1: 'assigned',
-		2: 'layout',
-		3: 'lock_for_anim',
-		4: 'animation_rough',
-		5: 'animation_final',
-		6: 'set_decoration',
-		7: 'shading',
-		8: 'master_lighting',
-		9: 'shot_lighting',
-		10: 'fx',
-		11: 'comp',
-		12: 'ip',
-		13: 'review',
-		14: 'done'
-	}
+
 	def __init__(self, num, sequence, show=None, author=None, clipName=None, start=0, end=0, makeDirs=False, dummy=False):
 		self.table = Shot.TABLE
 		self.num = num
@@ -73,8 +57,6 @@ class Shot(ElementContainer):
 			self.start = start
 			self.end = end
 			self.clipName = clipName
-			self.status = Shot.STATUS[0]
-			self.assigned_to = None
 			self.take = 0
 			self.thumbnail = None
 
@@ -117,6 +99,25 @@ class Shot(ElementContainer):
 			status=status,
 			debug=debug
 		)
+
+	def addCheckpoint(self, checkpoint='new'):
+		from helix.database.checkpoint import Checkpoint
+
+		cp = Checkpoint(self.id, self.show)
+
+		if checkpoint == 'new':
+			if cp.exists():
+				raise ValueError('Checkpoint "new" has already been set for this shot')
+			else:
+				cp.insert()
+		else:
+			if not cp.exists():
+				raise ValueError('Checkpoints have not been initialized for this shot yet. Start by setting the "new" checkpoint.')
+			else:
+				if hasattr(cp, checkpoint):
+					cp.set(checkpoint, env.getCreationInfo(format=False)[1])
+				else:
+					raise ValueError('Invalid checkpoint specified: {}'.format(checkpoint))
 
 	def __str__(self):
 		return 'Shot ' + str(self.num) + (self.clipName if self.clipName else '')

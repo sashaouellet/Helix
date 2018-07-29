@@ -78,6 +78,7 @@
     </widget>
     <addaction name="menuNew"/>
     <addaction name="ACT_importElement"/>
+    <addaction name="ACT_export"/>
     <addaction name="separator"/>
     <addaction name="separator"/>
     <addaction name="ACT_openDB"/>
@@ -462,6 +463,11 @@
    </property>
    <property name="shortcut">
     <string>Ctrl+0</string>
+   </property>
+  </action>
+  <action name="ACT_export">
+   <property name="text">
+    <string>Export...</string>
    </property>
   </action>
  </widget>
