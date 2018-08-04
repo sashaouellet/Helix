@@ -1,9 +1,12 @@
 import os
+import getpass, datetime
+
 from helix.api.exceptions import HelixException
 
 VAR_PREFIX = 'HELIX_'
 DEBUG = False
 HAS_UI = False
+USER = getpass.getuser()
 
 def setEnvironment(var, value):
 	os.environ[VAR_PREFIX + var.upper()] = value
@@ -42,15 +45,22 @@ def getWorkingElement():
 		from helix.database.element import Element
 		return Element.fromPk(element)
 
-def getCreationInfo(format=True):
-	import getpass, datetime
+def getDept():
+	from helix.database.person import Person
+	person = Person.fromPk(USER)
 
+	if person is not None:
+		return person.department
+
+	return None
+
+def getCreationInfo(format=True):
 	dt = datetime.datetime.now()
 
 	if format:
 		dt = dt.strftime(DATE_FORMAT)
 
-	return (getpass.getuser(), dt)
+	return (USER, dt)
 
 def getConfig():
 	from helix.environment.config import GeneralConfigHandler
