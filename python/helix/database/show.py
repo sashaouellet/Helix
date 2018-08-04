@@ -151,6 +151,10 @@ class Show(ElementContainer):
 		return self.alias
 
 	@property
+	def id(self):
+		return self.alias
+
+	@property
 	def pk(self):
 		return Show.PK
 
