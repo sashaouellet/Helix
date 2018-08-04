@@ -30,7 +30,13 @@ class DatabaseObject(object):
 	def set(self, attr, val, insertIfMissing=False):
 		with Manager() as mgr:
 			if self.exists():
-				mgr.connection().execute("UPDATE {} SET {}='{}' WHERE {}='{}'".format(self.table, attr, val, self.pk, getattr(self, self.pk)))
+				mgr.connection().execute("UPDATE {} SET {}={} WHERE {}='{}'".format(
+					self.table,
+					attr,
+					"'{}'".format(val) if val is not None else "NULL",
+					self.pk,
+					getattr(self, self.pk))
+				)
 			else:
 				setattr(self, attr, val)
 				if insertIfMissing:
@@ -41,6 +47,12 @@ class DatabaseObject(object):
 			self._exists = mgr._insert(self.table, self)
 
 			return self._exists
+
+	def delete(self):
+		with Manager() as mgr:
+			success = mgr._delete(self)
+
+			return success
 
 	def exists(self, fetch=False):
 		# we cache the exists after construction because we either fetched
@@ -144,6 +156,24 @@ class DatabaseObject(object):
 	def __ne__(self, other):
 		return not (self == other)
 
+def getAll(cls):
+	from helix.database.show import Show
+	from helix.database.sequence import Sequence
+	from helix.database.shot import Shot
+	from helix.database.element import Element
+	from helix.database.person import Person
+	from helix.database.fix import Fix
+
+	with Manager(willCommit=False) as mgr:
+		query = """SELECT * FROM {}""".format(cls.TABLE)
+		rows = mgr.connection().execute(query).fetchall()
+		instances = []
+
+		for r in rows:
+			instances.append(cls.dummy().unmap(r))
+
+		return instances
+
 def getShows():
 	from helix.database.show import Show
 	with Manager(willCommit=False) as mgr:
@@ -179,3 +209,14 @@ def getElements():
 
 		return elements
 
+def getUsers():
+	from helix.database.person import Person
+	with Manager(willCommit=False) as mgr:
+		query = """SELECT * FROM {}""".format(Person.TABLE)
+		rows = mgr.connection().execute(query).fetchall()
+		users = []
+
+		for r in rows:
+			users.append(Person.dummy().unmap(r))
+
+		return users
