@@ -2,16 +2,17 @@ import calendar
 from datetime import datetime, timedelta
 import re
 import sys
-from contextlib import contextmanager
 
-@contextmanager
-def stdout_redirector(stream):
-	old_stdout = sys.stdout
-	sys.stdout = stream
+def dbTimetoDt(dbTime):
 	try:
-		yield
-	finally:
-		sys.stdout = old_stdout
+		return datetime.strptime(dbTime, '%Y-%m-%d %H:%M:%S.%f')
+	except ValueError:
+		return datetime.strptime(dbTime, '%Y-%m-%d')
+
+def prettyDate(dbTime):
+	dt = dbTimetoDt(dbTime)
+
+	return dt.strftime('%x')
 
 def utcToLocal(utcDT):
 	"""Converts the given datetime object (naive, UTC) into a datetime object
