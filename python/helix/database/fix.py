@@ -1,5 +1,7 @@
 import os
 
+from datetime import datetime
+
 from helix.database.database import DatabaseObject
 from helix.database.show import Show
 from helix.database.sequence import Sequence
@@ -7,6 +9,7 @@ from helix.database.shot import Shot
 from helix.database.element import Element
 from helix.database.person import Person
 import helix.environment.environment as env
+import helix.utils.utils as utils
 
 class Fix(DatabaseObject):
 	TABLE = 'fixes'
@@ -32,7 +35,7 @@ class Fix(DatabaseObject):
 		10: 'Critical'
 	}
 
-	def __init__(self, title, body, show=None, sequence=None, shot=None, elementName=None, elementType=None, author=None, status=STATUS[0], priority=PRIORITY[3], dummy=False):
+	def __init__(self, title, body, dept, show=None, sequence=None, shot=None, clipName=None, elementName=None, elementType=None, author=None, status=STATUS[0], priority=3, dummy=False):
 		self.table = Fix.TABLE
 		self.title = title
 		self.body = body
@@ -69,17 +72,16 @@ class Fix(DatabaseObject):
 			self.author = author if author else creationInfo[0]
 			self.creation = creationInfo[1]
 			self.status = status if status in Fix.STATUS.values() else Fix.STATUS[0]
-
-			# Checks if given value is one of the string values of the priority dict
-			# Falls back to checking if the given priority is one of the number values
-			# Finally defaults to PRIORITY[3]
-			self.priority = priority if priority in Fix.PRIORITY.values() else Fix.PRIORITY.get(priority, Fix.PRIORITY[3])
-
+			self.priority = priority if priority in Fix.PRIORITY.keys() else 3
 			self.fixer = None
 			self.fix_date = None
 			self.deadline = None
 			self.assign_date = None
 			self.num = Fix.nextFixNum(self.show)
+			self.for_dept = dept.lower()
+
+			if self.for_dept not in env.cfg.departments and self.for_dept != 'general':
+				raise ValueError('Invalid department ({}) to assign fix to. Options are: {}'.format(self.for_dept, ', '.join(['general'] + env.cfg.departments)))
 
 			s = Show(self.show)
 
@@ -110,14 +112,14 @@ class Fix(DatabaseObject):
 				except ValueError:
 					raise ValueError('Sequence number must be a number, not: {}'.format(shot))
 
-				sh = Shot(self.shot, self.sequence, show=self.show)
+				sh = Shot(self.shot, self.sequence, show=self.show, clipName=clipName)
 
 				if not sh.exists():
-					raise ValueError('No such shot {} in sequence {} in show {}'.format(sh.num, sh.sequence, sh.show))
+					raise ValueError('No such shot {}{} in sequence {} in show {}'.format(sh.num, sh.clipName if sh.clipName else '', sh.sequence, sh.show))
 				else:
 					self.shotId = sh.id
 
-			if self.elementName and self.elementType:
+			if self.elementType:
 				el = Element(self.elementName, self.elementType, self.show, self.sequence, self.shot)
 
 				if not el.exists():
@@ -149,6 +151,31 @@ class Fix(DatabaseObject):
 	@property
 	def pk(self):
 		return Fix.PK
+
+	@property
+	def target(self):
+		if self.elementId:
+			return Element.fromPk(self.elementId)
+		elif self.shotId:
+			return Shot.fromPk(self.shotId)
+		elif self.sequenceId:
+			return Sequence.fromPk(self.sequenceId)
+		elif self.show:
+			return Show.fromPk(self.show)
+
+	@property
+	def bid(self):
+		if self.deadline is not None and self.creation is not None:
+			return (utils.dbTimetoDt(self.deadline) - utils.dbTimetoDt(self.creation)).days + 1
+
+		return None
+
+	@property
+	def days(self):
+		if self.deadline is not None:
+			return (utils.dbTimetoDt(self.deadline) - datetime.now()).days + 1
+
+		return None
 
 	@staticmethod
 	def nextFixNum(show=None):
@@ -189,3 +216,7 @@ class Fix(DatabaseObject):
 				return Fix('.', '.', show).unmap(res)
 			else:
 				return None
+
+	@staticmethod
+	def dummy():
+		return Fix('', '', '', dummy=True)
