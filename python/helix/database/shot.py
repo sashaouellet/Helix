@@ -100,24 +100,31 @@ class Shot(ElementContainer):
 			debug=debug
 		)
 
-	def addCheckpoint(self, checkpoint='new'):
+	def addCheckpointStage(self, stage):
 		from helix.database.checkpoint import Checkpoint
 
-		cp = Checkpoint(self.id, self.show)
+		if stage.lower() not in Checkpoint.STAGES:
+			raise ValueError('Invalid stage "{}". Must be one of: {}'.format(stage, ', '.join(Checkpoint.STAGES)))
 
-		if checkpoint == 'new':
-			if cp.exists():
-				raise ValueError('Checkpoint "new" has already been set for this shot')
-			else:
-				cp.insert()
+		cp = Checkpoint(self.id, stage, show=self.show)
+
+		if cp.exists():
+			print 'Checkpoint "{}" has already been added for this shot'.format(stage)
 		else:
-			if not cp.exists():
-				raise ValueError('Checkpoints have not been initialized for this shot yet. Start by setting the "new" checkpoint.')
-			else:
-				if hasattr(cp, checkpoint):
-					cp.set(checkpoint, env.getCreationInfo(format=False)[1])
-				else:
-					raise ValueError('Invalid checkpoint specified: {}'.format(checkpoint))
+			cp.insert()
+
+	def getCheckpoints(self):
+		from helix.database.sql import Manager
+		from helix.database.checkpoint import Checkpoint
+
+		with Manager(willCommit=False) as mgr:
+			query = """SELECT * FROM {} WHERE shotId='{}'""".format(Checkpoint.TABLE, self.id)
+			cps = []
+
+			for row in mgr.connection().execute(query).fetchall():
+				cps.append(Checkpoint.dummy().unmap(row))
+
+			return cps
 
 	def __str__(self):
 		return 'Shot ' + str(self.num) + (self.clipName if self.clipName else '')
@@ -139,6 +146,10 @@ class Shot(ElementContainer):
 			SHOT_FORMAT.format(str(self.num).zfill(env.SEQUENCE_SHOT_PADDING)),
 			'_' + self.clipName if self.clipName else ''
 		)
+
+	@property
+	def parent(self):
+		return Sequence.fromPk(self.sequenceId)
 
 	@property
 	def pk(self):

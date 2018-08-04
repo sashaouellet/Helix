@@ -65,6 +65,14 @@ class Manager(object):
 			print self.formatError(obj, e)
 			return False
 
+	def _delete(self, obj):
+		try:
+			self.conn.execute("DELETE FROM {} WHERE {}='{}'".format(obj.table, obj.pk, getattr(obj, obj.pk)))
+			return True
+		except sqlite3.IntegrityError as e:
+			print self.formatError(obj, e)
+			return False
+
 	def formatError(self, obj, e):
 		error = str(e)
 
@@ -83,7 +91,7 @@ class Manager(object):
 			CREATE TABLE IF NOT EXISTS 'people' (
 				'username'		VARCHAR(10) NOT NULL UNIQUE,
 				'full_name'		TEXT,
-				'department'	TEXT,
+				'department'	TEXT NOT NULL,
 				PRIMARY KEY('username')
 			)
 		'''
@@ -171,26 +179,17 @@ class Manager(object):
 		self.conn.execute(
 		'''
 			CREATE TABLE IF NOT EXISTS 'checkpoints' (
-				'shotId'			VARCHAR(32) PRIMARY KEY NOT NULL UNIQUE,
-				'show'				VARCHAR(10) NOT NULL,
-				'new'				DATE NOT NULL,
-				'layout'			DATE,
-				'camera_polish'		DATE,
-				'editorial'			DATE,
-				'lock_for_anim' 	DATE,
-				'anim_rough'		DATE,
-				'anim_final'		DATE,
-				'set_decoration'	DATE,
-				'shading'			DATE,
-				'master_lighting'	DATE,
-				'shot_lighting'		DATE,
-				'fx'				DATE,
-				'cfx'				DATE,
-				'comp'				DATE,
-				'director_review'	DATE,
-				'delivered'			DATE,
+				'id'					VARCHAR(32) PRIMARY KEY NOT NULL UNIQUE,
+				'shotId'				VARCHAR(32) NOT NULL,
+				'show'					VARCHAR(10) NOT NULL,
+				'stage'					TEXT NOT NULL,
+				'status'				TEXT NOT NULL,
+				'begin_date'			DATE,
+				'completion_date'		DATE,
+				'assigned_to'			VARCHAR(10),
 				FOREIGN KEY('shotId') REFERENCES 'shots'('id'),
-				FOREIGN KEY('show') REFERENCES 'shows'('alias')
+				FOREIGN KEY('show') REFERENCES 'shows'('alias'),
+				FOREIGN KEY('assigned_to') REFERENCES 'people'('username')
 			)
 		'''
 		)
@@ -201,6 +200,7 @@ class Manager(object):
 				'num'			INTEGER NOT NULL,
 				'author'		VARCHAR(10) NOT NULL,
 				'creation'		DATE NOT NULL,
+				'for_dept'		TEXT NOT NULL,
 				'fixer'			VARCHAR(10),
 				'fix_date'		DATE,
 				'deadline'		DATE,

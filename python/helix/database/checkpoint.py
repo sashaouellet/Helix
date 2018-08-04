@@ -5,11 +5,42 @@ import helix.environment.environment as env
 
 class Checkpoint(DatabaseObject):
 	TABLE = 'checkpoints'
-	PK = 'shotId'
+	PK = 'id'
 
-	def __init__(self, shotId, show=None, dummy=False):
+	# Stages "enum"
+	LAYOUT = 'layout'
+	CAMERA_POLISH = 'camera polish'
+	EDITORIAL = 'editorial'
+	LOCK_FOR_ANIM = 'lock for animation'
+	ANIM_ROUGH = 'animation rough'
+	ANIM_FINAL = 'animation final'
+	SET_DECORATION = 'set decoration'
+	SHADING = 'shading'
+	MASTER_LIGHTING = 'master lighting'
+	SHOT_LIGHTING = 'shot lighting'
+	FX = 'fx'
+	CFX = 'cfx'
+	COMP = 'compositing'
+	DIRECTOR_REVIEW = 'director review'
+	DELIVERED = 'delivered'
+
+	STAGES = [LAYOUT, CAMERA_POLISH, EDITORIAL, LOCK_FOR_ANIM, ANIM_ROUGH,
+	ANIM_FINAL, SET_DECORATION, SHADING, MASTER_LIGHTING, SHOT_LIGHTING,
+	FX, CFX, COMP, DIRECTOR_REVIEW, DELIVERED]
+
+	STATUS = {
+		0: 'N/A',
+		1: 'pre-prod',
+		2: 'assigned',
+		3: 'ip',
+		4: 'review',
+		5: 'done'
+	}
+
+	def __init__(self, shotId, stage, show=None, dummy=False):
 		self.table = Checkpoint.TABLE
 		self.shotId = shotId
+		self.stage = stage
 		self._exists = False
 
 		if dummy:
@@ -18,7 +49,10 @@ class Checkpoint(DatabaseObject):
 		shot = Shot.fromPk(self.shotId)
 
 		if shot is None or not shot.exists():
-			raise ValueError('Checkpoint shot does not exist')
+			raise ValueError('Shot does not exist')
+
+		if stage not in Checkpoint.STAGES:
+			raise ValueError('Invalid stage. Must be one of: {}'.format(', '.join(Checkpoint.STAGES)))
 
 		fetched = self.exists(fetch=True)
 
@@ -37,36 +71,25 @@ class Checkpoint(DatabaseObject):
 			if not s.exists():
 				raise ValueError('No such show: {}'.format(self.show))
 
-			self.new = env.getCreationInfo(format=False)[1]
-			self.layout = None
-			self.camera_polish = None
-			self.editorial = None
-			self.lock_for_anim = None
-			self.anim_rough = None
-			self.anim_final = None
-			self.set_decoration = None
-			self.shading = None
-			self.master_lighting = None
-			self.shot_lighting = None
-			self.fx = None
-			self.cfx = None
-			self.comp = None
-			self.director_review = None
-			self.delivered = None
+			self.status = Checkpoint.STATUS[0] # Set to N/A to begin with
+			self.begin_date = None
+			self.completion_date = None
+			self.assigned_to = None
 
 	@property
 	def pk(self):
 		return Checkpoint.PK
 
+	@property
+	def id(self):
+		return super(Checkpoint, self)._id(
+			'{}_{}'.format(
+				self.shotId,
+				self.stage
+			)
+		)
+
 	@staticmethod
 	def dummy():
-		return Checkpoint('', dummy=True)
-
-	@staticmethod
-	def getStages():
-		from helix.database.sql import Manager
-		with Manager() as mgr:
-			stages = [c[0] for c in mgr.getColumnNames(Checkpoint.TABLE) if c[0] not in ('shotId', 'show')]
-
-			return stages
+		return Checkpoint('', '', dummy=True)
 
