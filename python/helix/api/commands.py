@@ -5,6 +5,7 @@ import helix.database.database as db
 from helix.database.show import Show
 from helix.database.sequence import Sequence
 from helix.database.shot import Shot
+from helix.database.checkpoint import Checkpoint
 from helix.database.element import Element
 from helix.api.exceptions import *
 from helix.environment.permissions import PermissionHandler
@@ -58,11 +59,23 @@ def rmseq(seqNum, clean=False):
 
 	print 'Successfully removed sequence'
 
-def mkshot(seqNum, shotNum, start=0, end=0, clipName=None):
+def mkshot(seqNum, shotNum, start=0, end=0, clipName=None, checkpoints='delivered'):
 	perms.check('helix.create.shot')
 
-	if Shot(shotNum, seqNum, start=start, end=end, clipName=clipName, makeDirs=True).insert():
-		print 'Successfully created shot {}'.format(shotNum)
+	shot = Shot(shotNum, seqNum, start=start, end=end, clipName=clipName, makeDirs=True)
+
+	if shot.insert():
+		stages = [s.strip().lower() for s in checkpoints.split(',')]
+
+		print stages
+
+		if 'delivered' not in stages:
+			stages.append('delivered')
+
+		for stage in stages:
+			shot.addCheckpointStage(stage)
+
+		print 'Successfully created shot {}'.format(shot.num)
 		return True
 	else:
 		raise DatabaseError('Failed to create shot. Does this number already exist?')
@@ -423,6 +436,7 @@ def main(cmd, argv):
 		parser.add_argument('--start', '-s', default=0, help='Start frame of the shot')
 		parser.add_argument('--end', '-e', default=0, help='End frame of the shot')
 		parser.add_argument('--clipName', '-c', default=None, help='The name of the clip associated with this shot')
+		parser.add_argument('--checkpoints', default='delivered', help='Comma-separated list of checkpoint stages to initially create for the shot. The "delivered" stage is always made.')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
