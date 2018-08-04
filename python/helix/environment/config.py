@@ -50,6 +50,10 @@ class GeneralConfigHandler(ConfigFileHandler):
 			self.config.set('Formatting', '# The number padding for sequence/shot folders')
 			self.config.set('Formatting', 'SequenceShotPadding', 4)
 
+			self.config.add_section('Departments')
+			self.config.set('Departments', '# The master list of all possible departments users in the system will be a part of. Used for generating reports and being able to assign fixes on a per-department basis.')
+			self.config.set('Departments', 'departments', 'animation,layout,editorial,sets,lookdev,lighting,fx,cfx,comp,production,pipeline')
+
 			self.config.add_section('Permissions')
 			self.config.set('Permissions', '# Define any number of user groups, the permission "nodes" for the group, and a list of members of that group')
 			self.config.set('Permissions', '# The following permission node list indicates that users in ExampleGroup can do all helix commands (helix.*) except children of the helix.delete permission nodes. The "^" indicates NOT, while "*" indicates all children under.')
@@ -87,6 +91,9 @@ class GeneralConfigHandler(ConfigFileHandler):
 				self.framePadding = self.config.getint('Formatting', 'FramePadding')
 			if self.config.has_option('Formatting', 'SequenceShotPadding'):
 				self.seqShotPadding = self.config.getint('Formatting', 'SequenceShotPadding')
+
+		if self.config.has_section('Departments'):
+			self.departments = [d.strip() for d in self.config.get('Departments', 'departments').split(',')]
 
 		if self.config.has_section('Permissions'):
 			pattern = re.compile(r'^(\w+)(users)$')
@@ -143,6 +150,10 @@ class GeneralConfigHandler(ConfigFileHandler):
 		self.config.set('Formatting', 'VersionPadding', self.versionPadding)
 		self.config.set('Formatting', 'FramePadding', self.framePadding)
 		self.config.set('Formatting', 'SequenceShotPadding', self.seqShotPadding)
+
+		# Departments
+		self.config.add_section('Departments')
+		self.config.set('Departments', 'departments', ', '.join(self.departments))
 
 		# Permissions
 		self.config.add_section('Permissions')
