@@ -112,6 +112,10 @@ class Sequence(ElementContainer):
 		return SEQUENCE_FORMAT.format(str(self.num).zfill(env.SEQUENCE_SHOT_PADDING))
 
 	@property
+	def parent(self):
+		return Show.fromPk(self.show)
+
+	@property
 	def pk(self):
 		return Sequence.PK
 
