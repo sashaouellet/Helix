@@ -1,4 +1,5 @@
 from helix.database.database import DatabaseObject
+import helix.environment.environment as env
 
 class Person(DatabaseObject):
 	TABLE = 'people'
@@ -23,7 +24,14 @@ class Person(DatabaseObject):
 		else:
 			self._exists = False
 			self.full_name = full_name
-			self.department = department
+
+			if not department:
+				department = 'general'
+
+			self.department = department.lower()
+
+			if self.department not in env.cfg.departments and self.department != 'general':
+				raise ValueError('Not a valid department ({}). Options are: {}'.format(self.department, ', '.join(['general'] + env.cfg.departments)))
 
 	def __str__(self):
 		if self.full_name:
@@ -34,3 +42,7 @@ class Person(DatabaseObject):
 	@property
 	def pk(self):
 		return Person.PK
+
+	@staticmethod
+	def dummy():
+		return Person('', dummy=True)
