@@ -121,7 +121,7 @@ class ElementListWidgetItem(QListWidgetItem):
 			return str(self.element)
 
 class Node(object):
-	def __init__(self, data=None):
+	def __init__(self, data=None, defaultVal=None):
 		self._data = data
 
 		if type(data) == tuple:
@@ -134,10 +134,13 @@ class Node(object):
 		self._children = []
 		self._parent = None
 		self._row = 0
+		self.default = defaultVal
 
 	def data(self, col):
 		if col >= 0 and col < len(self._data):
 			return self._data[col]
+
+		return self.default
 
 	def columnCount(self):
 		return self._colCount
