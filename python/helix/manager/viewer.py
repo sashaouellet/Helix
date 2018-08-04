@@ -6,6 +6,7 @@ from helix.database.show import Show
 from helix.database.sequence import Sequence
 from helix.database.shot import Shot
 from helix.database.element import Element
+from helix.database.checkpoint import Checkpoint
 import helix.database.database as db
 import helix.api.commands as hxcmds
 import helix.environment.environment as env
@@ -15,6 +16,8 @@ from helix.manager.dailies import SlapCompDialog
 from helix.manager.config import ConfigEditorDialog
 from helix.manager.console import Console
 from helix.manager.element import ElementViewWidget, ElementPickerDialog, PickMode
+from helix.manager.fixes import FixDialog, FixView
+from helix.manager.checkpoints import UpdateCheckpointDialog, CheckpointStatusDialog
 from helix.utils.qtutils import Node, ExceptionDialog, FileChooserLayout, ElementListWidgetItem, Operation
 import helix.utils.utils as utils
 
@@ -133,6 +136,8 @@ class ElementTableItem(QLabel):
 		self.exploreReleaseAction = QAction('Open release directory', self)
 		self.publishAction = QAction('Publish...', self)
 		self.rollbackAction = QAction('Rollback...', self)
+		self.importAction = QAction('Import into this asset...', self)
+		self.exportAction = QAction('Export...', self)
 		self.propertiesAction = QAction('Properties...', self)
 
 		# No rollback option if we have no publishes for the element
@@ -145,12 +150,16 @@ class ElementTableItem(QLabel):
 		self.addAction(self.exploreReleaseAction)
 		self.addAction(self.publishAction)
 		self.addAction(self.rollbackAction)
+		self.addAction(self.importAction)
+		self.addAction(self.exportAction)
 		self.addAction(self.propertiesAction)
 
 		self.explorerAction.triggered.connect(lambda: self.handleExplorer(True))
 		self.exploreReleaseAction.triggered.connect(lambda: self.handleExplorer(False))
 		self.publishAction.triggered.connect(self.handlePublish)
 		self.rollbackAction.triggered.connect(self.handleRollback)
+		self.importAction.triggered.connect(self.handleImport)
+		self.exportAction.triggered.connect(self.handleExport)
 		self.propertiesAction.triggered.connect(self.parent.handleElementEdit)
 
 	def handleExplorer(self, work):
@@ -168,6 +177,18 @@ class ElementTableItem(QLabel):
 	def handleRollback(self):
 		env.setEnvironment('element', self.elementId)
 		RollbackDialog(self.parent.parent, self.element).show()
+
+	def handleImport(self):
+		dialog = ImportElementDialog(self.parent.parent)
+
+		dialog.show()
+		dialog.setElement(self.element)
+
+	def handleExport(self):
+		dialog = ExportDialog(self.parent.parent)
+
+		dialog.show()
+		dialog.LST_elements.insertItem(0, ElementListWidgetItem(self.element, parent=dialog.LST_elements))
 
 	@property
 	def element(self):
@@ -370,6 +391,20 @@ class NewShotDialog(QDialog):
 	def __init__(self, parent, show, seq):
 		super(NewShotDialog, self).__init__(parent)
 		uic.loadUi(os.path.join(helix.root, 'ui', 'shotCreation.ui'), self)
+
+		self.stageChecks = []
+
+		for stage in Checkpoint.STAGES:
+			chk = QCheckBox(utils.capitalize(stage))
+
+			# We always want the shot to be created with at least this stage
+			if stage == Checkpoint.DELIVERED:
+				chk.setChecked(True)
+				chk.setEnabled(False)
+
+			self.stageChecks.append(chk)
+			self.SCRL_stagesWidget.layout().addWidget(chk)
+
 		self.makeConnections()
 
 		self._show = show
@@ -422,6 +457,10 @@ class NewShotDialog(QDialog):
 
 		if clipName:
 			cmd.extend(['-c', clipName])
+
+		stages = [str(check.text()).lower() for check in self.stageChecks if check.isChecked()]
+
+		cmd.extend(['--checkpoints', '"' + ','.join(stages) + '"'])
 
 		self.parent().console.inject(['pop', self._show])
 
@@ -605,6 +644,8 @@ class EditingDialog(QDialog):
 
 		self.setWindowTitle('{} properties'.format(str(self.item)))
 
+		self.TBL_properties.clearContents()
+		self.TBL_properties.setRowCount(0)
 		row = 0
 
 		from helix.database.sql import Manager
@@ -644,6 +685,8 @@ class ImportElementDialog(QDialog):
 		self.folderLayout = FileChooserLayout(self, browseCaption='Select folder with asset contents', selectionMode=FileChooserLayout.FOLDER)
 		self.LAY_folderSelect.addLayout(self.folderLayout)
 
+		self.shots = []
+
 		self.makeConnections()
 
 	def makeConnections(self):
@@ -664,9 +707,12 @@ class ImportElementDialog(QDialog):
 
 		if not selected:
 			return
+		else:
+			self.setElement(selected[0])
 
-		if not selected[0].name.startswith('_'):
-			self.LNE_name.setText(selected[0].name)
+	def setElement(self, element):
+		if not element.name.startswith('_'):
+			self.LNE_name.setText(element.name)
 			self.LNE_name.setEnabled(True)
 			self.CHK_nameless.setChecked(False)
 		else:
@@ -674,25 +720,27 @@ class ImportElementDialog(QDialog):
 			self.LNE_name.setEnabled(False)
 			self.CHK_nameless.setChecked(True)
 
-		typeIndex = self.CMB_type.findText(selected[0].type)
+		typeIndex = self.CMB_type.findText(element.type)
 
 		if typeIndex != -1:
 			self.CMB_type.setCurrentIndex(typeIndex)
 
-		showIndex = self.CMB_show.findText(selected[0].show)
+		showIndex = self.CMB_show.findText(element.show)
 
 		if showIndex != -1:
 			self.CMB_show.setCurrentIndex(showIndex)
+			self.populateSeqAndShot()
 
-		if selected[0].sequence is not None:
-			seqIndex = self.CMB_seq.findText(str(selected[0].sequence))
+		if element.sequence is not None:
+			seqIndex = self.CMB_seq.findText(str(element.sequence))
 
 			if seqIndex != -1:
 				self.CMB_seq.setCurrentIndex(seqIndex)
+				self.populateShots()
 
-		if selected[0].shot is not None:
-			clipName = selected[0].shot_clipName if selected[0].shot_clipName is not None else ''
-			shotIndex = self.CMB_shot.findText(str(selected[0].shot) + clipName)
+		if element.shot is not None:
+			clipName = element.shot_clipName if element.shot_clipName is not None else ''
+			shotIndex = self.CMB_shot.findText(str(element.shot) + clipName)
 
 			if shotIndex != -1:
 				self.CMB_shot.setCurrentIndex(shotIndex)
@@ -1076,7 +1124,6 @@ class ManagerWindow(QMainWindow):
 
 		self.setGeometry(0, 0, 1050, 720)
 
-
 	def saveSettings(self, version=0):
 		settings = QSettings()
 
@@ -1149,6 +1196,11 @@ class ManagerWindow(QMainWindow):
 		self.ACT_prefGeneral.triggered.connect(lambda: self.handleConfigEditor(0))
 		self.ACT_prefPerms.triggered.connect(lambda: self.handleConfigEditor(1))
 		self.ACT_prefExe.triggered.connect(lambda: self.handleConfigEditor(2))
+
+		self.ACT_newFix.triggered.connect(self.handleNewFix)
+		self.ACT_myFixes.triggered.connect(lambda: self.handleViewFixes(user=env.USER))
+		self.ACT_deptFixes.triggered.connect(lambda: self.handleViewFixes(dept=env.getDept()))
+		self.ACT_allFixes.triggered.connect(lambda: self.handleViewFixes())
 
 		self.ACT_hierarchy.triggered.connect(self.toggleHierarchy)
 		self.ACT_elList.triggered.connect(self.toggleElList)
@@ -1229,6 +1281,9 @@ class ManagerWindow(QMainWindow):
 			return
 
 		SlapCompDialog(item, self).show()
+
+	def handleShotManifest(self):
+		pass
 
 	def handleImportElement(self):
 		ImportElementDialog(self).show()
@@ -1342,6 +1397,22 @@ class ManagerWindow(QMainWindow):
 		# data is now the Show
 		NewElementDialog(self, data, seq, shot).show()
 
+	def handleNewFix(self):
+		FixDialog(self).show()
+
+	def handleViewFixes(self, user=None, dept=None):
+		fv = FixView(self)
+
+		if user is not None:
+			fv.setUserField(user)
+
+		if dept is not None:
+			fv.setDepartment(dept)
+
+		dock = fv.asDockable()
+		dock.setFloating(True)
+		dock.show()
+
 	def handleDataEdit(self, index):
 		if not index.isValid():
 			return
@@ -1359,6 +1430,28 @@ class ManagerWindow(QMainWindow):
 			# Fallback to show/seq/shot
 			self.handleDataEdit(self.VIEW_cols.currentIndex())
 
+	def handleUpdateCheckpoint(self):
+		idx = self.VIEW_cols.selectionModel().currentIndex()
+
+		if not idx.isValid():
+			return
+
+		if not isinstance(idx.internalPointer().data(0), Shot):
+			raise RuntimeError('Could not obtain shot from selection, but checkpoints were queried')
+
+		UpdateCheckpointDialog(self, idx.internalPointer().data(0)).show()
+
+	def handleCheckpointStatus(self):
+		idx = self.VIEW_cols.selectionModel().currentIndex()
+
+		if not idx.isValid():
+			return
+
+		if not isinstance(idx.internalPointer().data(0), Sequence):
+			raise RuntimeError('Could not obtain sequence from selection, but checkpoint status was queried')
+
+		CheckpointStatusDialog(self, idx.internalPointer().data(0)).show()
+
 	def buildContextMenu(self, obj):
 		self.MENU_contextMenu.clear()
 
@@ -1366,6 +1459,12 @@ class ManagerWindow(QMainWindow):
 			self.MENU_contextMenu.setTitle('Show')
 		elif obj == Sequence:
 			self.MENU_contextMenu.setTitle('Sequence')
+
+			self.ACT_checkpointStatus = QAction('Checkpoint Status', self.MENU_contextMenu)
+			self.ACT_checkpointStatus.triggered.connect(self.handleCheckpointStatus)
+
+			self.MENU_contextMenu.addAction(self.ACT_checkpointStatus)
+
 		elif obj == Shot:
 			self.MENU_contextMenu.setTitle('Shot')
 
@@ -1373,15 +1472,26 @@ class ManagerWindow(QMainWindow):
 			self.ACT_slapComp = QAction('Auto Slap Comp...', self.MENU_contextMenu)
 			self.ACT_slapComp.triggered.connect(self.handleSlapComp)
 
+			self.ACT_shotManifest = QAction('Edit shot manifest...', self.MENU_contextMenu)
+			self.ACT_shotManifest.triggered.connect(self.handleShotManifest)
+
 			# Sub menus
 			self.MENU_takes = QMenu('Takes', parent=self.MENU_contextMenu)
 			self.ACT_newTake = QAction('New take...', self.MENU_takes)
+			self.ACT_takeBrowser = QAction('Take browser', self.MENU_takes)
 
 			self.MENU_takes.addAction(self.ACT_newTake)
+			self.MENU_takes.addAction(self.ACT_takeBrowser)
+
+			self.ACT_updateCheckpoint = QAction('Update checkpoint...', self.MENU_contextMenu)
+			self.ACT_updateCheckpoint.triggered.connect(self.handleUpdateCheckpoint)
 
 			self.MENU_contextMenu.addAction(self.ACT_slapComp)
 			self.MENU_contextMenu.addSeparator()
 			self.MENU_contextMenu.addMenu(self.MENU_takes)
+			self.MENU_contextMenu.addAction(self.ACT_updateCheckpoint)
+			self.MENU_contextMenu.addSeparator()
+			self.MENU_contextMenu.addAction(self.ACT_shotManifest)
 
 	def checkSelection(self):
 		self.ACT_newSeq.setEnabled(False)
@@ -1539,7 +1649,11 @@ class BasicElementView(QTableWidget):
 
 		for row, el in enumerate(els):
 			for col, attr in enumerate(BasicElementView.COLUMNS):
-				self.setCellWidget(row, col, ElementTableItem(el.id, str(getattr(el, attr.lower())), self))
+				val = str(getattr(el, attr.lower()))
+
+				if attr == 'Creation':
+					val = utils.prettyDate(val)
+				self.setCellWidget(row, col, ElementTableItem(el.id, val, self))
 
 		self.resizeHeader()
 

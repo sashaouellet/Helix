@@ -135,14 +135,6 @@
     <addaction name="separator"/>
     <addaction name="ACT_bugReport"/>
    </widget>
-   <widget class="QMenu" name="menuPublish">
-    <property name="title">
-     <string>Publish</string>
-    </property>
-    <addaction name="ACT_mPub"/>
-    <addaction name="ACT_mRoll"/>
-    <addaction name="ACT_mVersions"/>
-   </widget>
    <widget class="QMenu" name="menuWindow">
     <property name="title">
      <string>Window</string>
@@ -170,10 +162,27 @@
     <addaction name="separator"/>
     <addaction name="menuLayout"/>
    </widget>
+   <widget class="QMenu" name="menuFixes">
+    <property name="title">
+     <string>Fixes</string>
+    </property>
+    <widget class="QMenu" name="menuView_2">
+     <property name="title">
+      <string>View</string>
+     </property>
+     <addaction name="ACT_myFixes"/>
+     <addaction name="ACT_deptFixes"/>
+     <addaction name="ACT_allFixes"/>
+    </widget>
+    <addaction name="ACT_newFix"/>
+    <addaction name="menuView_2"/>
+    <addaction name="separator"/>
+    <addaction name="ACT_fixReport"/>
+   </widget>
    <addaction name="menuFile"/>
    <addaction name="menuEdit"/>
    <addaction name="MENU_contextMenu"/>
-   <addaction name="menuPublish"/>
+   <addaction name="menuFixes"/>
    <addaction name="menuView"/>
    <addaction name="menuWindow"/>
    <addaction name="menuHelp"/>
@@ -468,6 +477,31 @@
   <action name="ACT_export">
    <property name="text">
     <string>Export...</string>
+   </property>
+  </action>
+  <action name="ACT_newFix">
+   <property name="text">
+    <string>New...</string>
+   </property>
+  </action>
+  <action name="ACT_deptFixes">
+   <property name="text">
+    <string>Department fixes</string>
+   </property>
+  </action>
+  <action name="ACT_myFixes">
+   <property name="text">
+    <string>Assigned to me</string>
+   </property>
+  </action>
+  <action name="ACT_fixReport">
+   <property name="text">
+    <string>Generate report...</string>
+   </property>
+  </action>
+  <action name="ACT_allFixes">
+   <property name="text">
+    <string>All</string>
    </property>
   </action>
  </widget>
