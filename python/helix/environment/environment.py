@@ -1,5 +1,7 @@
 import os
-import getpass, datetime
+import sys
+import getpass
+import datetime
 
 from helix.api.exceptions import HelixException
 
@@ -7,6 +9,15 @@ VAR_PREFIX = 'HELIX_'
 DEBUG = False
 HAS_UI = False
 USER = getpass.getuser()
+LINUX = 'Linux'
+WIN = 'Windows'
+MAC = 'Mac'
+OS = LINUX
+
+if sys.platform == 'win32':
+	OS = WIN
+elif sys.platform == 'darwin':
+	OS = MAC
 
 def setEnvironment(var, value):
 	os.environ[VAR_PREFIX + var.upper()] = value
