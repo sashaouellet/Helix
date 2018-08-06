@@ -100,6 +100,24 @@ class Shot(ElementContainer):
 			debug=debug
 		)
 
+	def getLatestTake(self):
+		from helix.database.sql import Manager
+		from helix.database.take import Take
+
+		with Manager(willCommit=False) as mgr:
+			res = mgr.connection().execute(
+				'''
+					SELECT *
+					FROM {table}
+					WHERE num = (SELECT MAX(num) FROM {table} WHERE show='{show}' AND sequenceId='{seq}' AND shotId='{shot}')
+				'''.format(table=Take.TABLE, show=self.show, seq=self.parent.id, shot=self.id)
+			).fetchone()
+
+			if res:
+				return Take.dummy().unmap(res)
+			else:
+				return None
+
 	def addCheckpointStage(self, stage):
 		from helix.database.checkpoint import Checkpoint
 
@@ -150,6 +168,15 @@ class Shot(ElementContainer):
 	@property
 	def parent(self):
 		return Sequence.fromPk(self.sequenceId)
+
+	@property
+	def thumbnail(self):
+		take = self.getLatestTake()
+
+		if take is not None:
+			return take.thumbnail
+
+		return None
 
 	@property
 	def pk(self):

@@ -12,12 +12,11 @@ class Take(DatabaseObject):
 	TABLE = 'takes'
 	PK = 'id'
 
-	def __init__(self, filePath, shot, sequence, show=None, author=None, comment=None, start=None, end=None, dummy=False):
+	def __init__(self, shot, sequence, show=None, clipName=None, author=None, comment=None, start=None, end=None, makeDirs=False, dummy=False):
 		self.table = Take.TABLE
 		self.show = show if show else env.getEnvironment('show')
 		self.sequence = sequence
 		self.shot = shot
-		self.file_path = filePath
 		self._exists = None
 
 		self.sequenceId = None
@@ -55,7 +54,7 @@ class Take(DatabaseObject):
 			except ValueError:
 				raise ValueError('Shot number must be a number, not: {}'.format(shot))
 
-			sh = Shot(self.shot, self.sequence, show=self.show)
+			sh = Shot(self.shot, self.sequence, show=self.show, clipName=clipName)
 
 			if not sh.exists():
 				raise ValueError('No such shot {} in sequence {} in show {}'.format(sh.num, sh.sequence, sh.show))
@@ -66,9 +65,6 @@ class Take(DatabaseObject):
 
 		self.num = Take.nextTakeNum(self.show, self.sequenceId, self.shotId)
 
-		if self.file_path is None: # TODO: do we force this path to exist?
-			raise ValueError('Must specify a file path for the Take')
-
 		fetched = self.exists(fetch=True)
 
 		if fetched:
@@ -77,6 +73,7 @@ class Take(DatabaseObject):
 		else:
 			creationInfo = env.getCreationInfo(format=False)
 
+			self.comment = comment
 			self.author = author if author else creationInfo[0]
 			self.creation = creationInfo[1]
 			self.first_frame = start
@@ -87,7 +84,12 @@ class Take(DatabaseObject):
 			if not p.exists():
 				raise ValueError('No such user: {}'.format(self.author))
 
-			self.thumbnail = None
+			shotDir = Shot.fromPk(self.shotId).release_path
+
+			self.file_path = os.path.join(shotDir, '.takes', str(self.num))
+
+			if makeDirs and not os.path.isdir(self.file_path):
+				os.makedirs(self.file_path)
 
 	@property
 	def id(self):
@@ -104,6 +106,36 @@ class Take(DatabaseObject):
 	def pk(self):
 		return Take.PK
 
+	@property
+	def imageSequence(self):
+		fileName = '{}_take{}.{}.png'.format(
+			str(Shot.fromPk(self.shotId)).replace(' ', '_').lower(),
+			str(self.num),
+			'#' * env.FRAME_PADDING
+		)
+
+		return os.path.join(self.file_path, fileName)
+
+	@property
+	def mov(self):
+		fileName = '{}_take{}.mov'.format(
+			str(Shot.fromPk(self.shotId)).replace(' ', '_').lower(),
+			str(self.num)
+		)
+
+		return os.path.join(self.file_path, fileName)
+
+	@property
+	def thumbnail(self):
+		if self.first_frame is not None and self.last_frame is not None:
+			middle = (self.first_frame + self.last_frame) / 2
+			return self.imageSequence.replace(
+				'#' * env.FRAME_PADDING,
+				str(middle).zfill(env.FRAME_PADDING)
+			)
+		else:
+			return None
+
 	@staticmethod
 	def nextTakeNum(show, sequence, shot):
 		from helix.database.sql import Manager
@@ -119,4 +151,8 @@ class Take(DatabaseObject):
 				return int(res[0]) + 1
 			else:
 				return 1
+
+	@staticmethod
+	def dummy():
+		return Take('', '', dummy=True)
 

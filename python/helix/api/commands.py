@@ -7,8 +7,11 @@ from helix.database.sequence import Sequence
 from helix.database.shot import Shot
 from helix.database.checkpoint import Checkpoint
 from helix.database.element import Element
+from helix.database.take import Take
 from helix.api.exceptions import *
 from helix.environment.permissions import PermissionHandler
+
+from helix.utils.fileclassification import FrameSequence
 import helix.utils.fileutils as fileutils
 
 dbLoc = env.getEnvironment('db')
@@ -132,6 +135,27 @@ def get(elType, name=None, sequence=None, shot=None):
 	env.setEnvironment('element', element.id)
 
 	print 'Working on {}'.format(element)
+
+def mktake(input, sequence, shot, clipName=None, commentText='', blackBars=False, shotNum=False, frame=False, author=False, comment=False, checkpoints=False, date=False, take=False):
+	take = Take(shot, sequence, clipName=clipName, comment=commentText, makeDirs=True)
+
+	import helix.api.nuke as hxnk
+	from helix.api.nuke.scripts import makeTake
+
+	args = [
+		input,
+		'--seqOut', take.imageSequence,
+		'--movOut', take.mov
+	]
+
+	proc = hxnk.Nuke().runCommandLineScript(makeTake.__file__, args=args)
+	proc.communicate()
+
+	seq = FrameSequence(take.file_path)
+	take.first_frame = seq.first()
+	take.last_frame = seq.last()
+
+	take.insert()
 
 # Element-context commands
 def pub(file, range=(), force=False):
