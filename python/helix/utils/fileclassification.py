@@ -447,8 +447,6 @@ class Frame():
 		self._ext = ext
 		self._dir = directory
 
-		print str(self)
-
 	def _interpretFramePadding(self, framePadding):
 		"""Given a string that represents the frame padding portion
 		of a file, interprets what the actual frame number is and how
