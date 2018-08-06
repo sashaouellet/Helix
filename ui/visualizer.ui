@@ -13,6 +13,9 @@
     <height>712</height>
    </rect>
   </property>
+  <property name="mouseTracking">
+   <bool>true</bool>
+  </property>
   <property name="windowTitle">
    <string>Helix</string>
   </property>
@@ -29,30 +32,10 @@
    <bool>true</bool>
   </property>
   <widget class="QWidget" name="WIDG_main">
-   <layout class="QVBoxLayout" name="verticalLayout">
-    <item>
-     <widget class="QColumnView" name="VIEW_cols">
-      <property name="minimumSize">
-       <size>
-        <width>200</width>
-        <height>100</height>
-       </size>
-      </property>
-      <property name="tabKeyNavigation">
-       <bool>true</bool>
-      </property>
-      <property name="dragDropMode">
-       <enum>QAbstractItemView::NoDragDrop</enum>
-      </property>
-      <property name="alternatingRowColors">
-       <bool>true</bool>
-      </property>
-      <property name="selectionMode">
-       <enum>QAbstractItemView::SingleSelection</enum>
-      </property>
-     </widget>
-    </item>
-   </layout>
+   <property name="mouseTracking">
+    <bool>true</bool>
+   </property>
+   <layout class="QHBoxLayout" name="horizontalLayout"/>
   </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">

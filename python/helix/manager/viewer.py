@@ -27,44 +27,65 @@ from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 from PyQt4 import uic
 
-class ShowModel(QAbstractItemModel):
-	def __init__(self, shows, parent=None):
-		super(ShowModel, self).__init__(parent)
+class HierarchyView(QTreeView):
+	def __init__(self, parent, canDeselect=True, right=None):
+		super(HierarchyView, self).__init__(parent)
 
-		self.setShows(shows)
+		self.right = right
+		self.canDeselect = canDeselect
 
-	def getShowIndexes(self):
-		indexes = []
+		self.setMouseTracking(True)
+		self.setRootIsDecorated(False)
+		self.setUniformRowHeights(True)
+		self.setAlternatingRowColors(True)
 
-		for i in range(self._root.childCount()):
-			indexes.append(self.index(i, 0))
+	def mouseMoveEvent(self, event):
+		idx = self.indexAt(event.pos())
+		if not idx.isValid():
+			return
 
-		return indexes
+		tooltip = idx.data(Qt.ToolTipRole).toPyObject()
 
-	def setShows(self, shows):
-		self.beginResetModel()
+		if tooltip:
+			QToolTip.showText(
+				self.viewport().mapToGlobal(self.visualRect(idx).topLeft()) + event.pos(),
+				tooltip,
+				self.viewport(),
+				self.visualRect(idx)
+			)
+
+	def mousePressEvent(self, event):
+		idx = self.indexAt(event.pos())
+
+		if idx.isValid():
+			super(HierarchyView, self).mousePressEvent(event)
+		elif self.canDeselect:
+			self.selectionModel().clear()
+			self.selectionModel().setCurrentIndex(QModelIndex(), QItemSelectionModel.Clear)
+
+	def keyPressEvent(self, event):
+		if event.key() in (Qt.Key_Escape, Qt.Key_Left):
+			# Deselect
+			if self.canDeselect:
+				self.selectionModel().clear()
+				self.selectionModel().setCurrentIndex(QModelIndex(), QItemSelectionModel.Clear)
+		elif event.key() == Qt.Key_Right:
+			# TODO: invesigate why the highlight doesn't update until the cursor moves in
+			if self.right:
+				self.right.selectionModel().setCurrentIndex(self.model().index(0, 0), QItemSelectionModel.ClearAndSelect)
+		elif event.key() in (Qt.Key_Down, Qt.Key_Up):
+			curRow = self.selectionModel().currentIndex().row()
+			delta = -1 if event.key() == Qt.Key_Up else 1
+			nextRow = curRow + delta
+
+			if nextRow >= 0 and nextRow < self.model()._root.childCount():
+				self.selectionModel().setCurrentIndex(self.model().index(nextRow, 0), QItemSelectionModel.ClearAndSelect)
+
+class HierarchyModel(QAbstractItemModel):
+	def __init__(self, parent):
+		super(HierarchyModel, self).__init__(parent)
 
 		self._root = Node()
-
-		shows.sort(key=lambda s: getattr(s, s.pk))
-
-		for show in shows:
-			env.setEnvironment('show', show.alias)
-			showNode = self._root.addChild(Node(show))
-			seqs = show.getSequences()
-
-			seqs.sort(key=lambda s: s.num)
-
-			for seq in seqs:
-				seqNode = showNode.addChild(Node(seq))
-				shots = seq.getShots()
-
-				shots.sort(key=lambda s: s.num)
-
-				for shot in shots:
-					seqNode.addChild(Node(shot))
-
-		self.endResetModel()
 
 	def columnCount(self, index):
 		if index.isValid():
@@ -79,13 +100,18 @@ class ShowModel(QAbstractItemModel):
 		return self._root.childCount()
 
 	def data(self, index, role):
+		if role == Qt.SizeHintRole:
+			return QSize(200, 25)
+
 		if not index.isValid():
 			return QVariant()
 
 		node = index.internalPointer()
 
-		if node and role == Qt.DisplayRole:
-			return str(node.data(index.column()))
+		if node:
+			data = node.data(index.column())
+			if role == Qt.DisplayRole:
+				return str(data)
 
 		return QVariant()
 
@@ -123,6 +149,129 @@ class ShowModel(QAbstractItemModel):
 					return QAbstractItemModel.createIndex(self, p.row(), 0, p)
 
 		return QModelIndex()
+
+class ShotModel(HierarchyModel):
+	def __init__(self, seq=None, parent=None):
+		super(ShotModel, self).__init__(parent)
+
+		self.thumbnailCache = {}
+
+		if seq:
+			self.setShots(seq.getShots())
+
+	def data(self, index, role):
+		if not index.isValid():
+			return QVariant()
+
+		node = index.internalPointer()
+
+		if node:
+			data = node.data(index.column())
+			if role == Qt.ToolTipRole:
+				thumbnail = self.thumbnailCache.get(data.id)
+				if thumbnail:
+					return thumbnail
+				elif data.thumbnail:
+					print 'DB query'
+					thumbnail = data.thumbnail
+					pixmap = QPixmap(thumbnail)
+					pixmap = pixmap.scaledToWidth(300)
+					self.thumbnailCache[data.id] = '<img src="{}" height="{}" width="{}">'.format(thumbnail, int(pixmap.height()), int(pixmap.width()))
+
+					return self.thumbnailCache[data.id]
+
+		return super(ShotModel, self).data(index, role)
+
+	def setShots(self, shots):
+		self.beginResetModel()
+
+		self._root = Node()
+		self.thumbnailCache = {}
+
+		if shots:
+			shots.sort(key=lambda s: s.num)
+
+			for shot in shots:
+				self._root.addChild(Node(shot))
+
+		self.endResetModel()
+
+	def headerData(self, section, orientation, role=Qt.DisplayRole):
+		if orientation == Qt.Horizontal and role == Qt.DisplayRole:
+			return 'Shots'
+
+class SequenceModel(HierarchyModel):
+	def __init__(self, show=None, parent=None):
+		super(SequenceModel, self).__init__(parent)
+
+		if show:
+			self.setSequences(show.getSequences())
+
+	def data(self, index, role):
+		if not index.isValid():
+			return QVariant()
+
+		node = index.internalPointer()
+
+		if node:
+			data = node.data(index.column())
+			if role == Qt.ForegroundRole:
+				shots = data.getShots()
+
+				if not shots:
+					return QBrush(QColor(255, 0, 0))
+
+		return super(SequenceModel, self).data(index, role)
+
+	def setSequences(self, sequences):
+		self.beginResetModel()
+
+		self._root = Node()
+
+		if sequences:
+			sequences.sort(key=lambda s: s.num)
+
+			for seq in sequences:
+				self._root.addChild(Node(seq))
+
+		self.endResetModel()
+
+	def headerData(self, section, orientation, role=Qt.DisplayRole):
+		if orientation == Qt.Horizontal and role == Qt.DisplayRole:
+			return 'Sequences'
+
+class ShowModel(HierarchyModel):
+	def __init__(self, shows=None, parent=None):
+		super(ShowModel, self).__init__(parent)
+
+		if shows:
+			self.setShows(shows)
+
+	def getShowIndexes(self):
+		indexes = []
+
+		for i in range(self._root.childCount()):
+			indexes.append(self.index(i, 0))
+
+		return indexes
+
+	def setShows(self, shows):
+		self.beginResetModel()
+
+		self._root = Node()
+
+		if shows:
+			shows.sort(key=lambda s: getattr(s, s.pk))
+
+			for show in shows:
+				env.setEnvironment('show', show.alias)
+				self._root.addChild(Node(show))
+
+		self.endResetModel()
+
+	def headerData(self, section, orientation, role=Qt.DisplayRole):
+		if orientation == Qt.Horizontal and role == Qt.DisplayRole:
+			return 'Shows'
 
 class ElementTableItem(QLabel):
 	def __init__(self, elementId, data, parent):
@@ -1052,9 +1201,25 @@ class ManagerWindow(QMainWindow):
 		super(ManagerWindow, self).__init__()
 		uic.loadUi(os.path.join(helix.root, 'ui', 'visualizer.ui'), self)
 
+		self.LST_shots = HierarchyView(self)
+		self.LST_seqs = HierarchyView(self, right=self.LST_shots)
+		self.LST_shows = HierarchyView(self, right=self.LST_seqs, canDeselect=False)
+
+		self.showModel = ShowModel()
+		self.seqModel = SequenceModel()
+		self.shotModel = ShotModel()
+		self.LST_shows.setModel(self.showModel)
+		self.LST_shows.setSelectionModel(QItemSelectionModel(self.showModel))
+		self.LST_seqs.setModel(self.seqModel)
+		self.LST_seqs.setSelectionModel(QItemSelectionModel(self.seqModel))
+		self.LST_shots.setModel(self.shotModel)
+		self.LST_shots.setSelectionModel(QItemSelectionModel(self.shotModel))
+		self.WIDG_main.layout().addWidget(self.LST_shows)
+		self.WIDG_main.layout().addWidget(self.LST_seqs)
+		self.WIDG_main.layout().addWidget(self.LST_shots)
+
 		self.permHandler = perms.PermissionHandler()
 		self.elTypeFilter = Element.ELEMENT_TYPES
-		self.currentSelectionIndex = None
 
 		# == START dock widgets ==
 		self.console = Console(self)
@@ -1080,7 +1245,6 @@ class ManagerWindow(QMainWindow):
 		uic.loadUi(os.path.join(helix.root, 'ui', 'find.ui'), self.findDialog)
 		self.findDialog.makeConnections()
 
-		self.checkSelection()
 		self.makeConnections()
 		self.setAcceptDrops(True)
 
@@ -1191,7 +1355,15 @@ class ManagerWindow(QMainWindow):
 		self.ACT_explorer.triggered.connect(self.handleExplorer)
 		self.ACT_importElement.triggered.connect(self.handleImportElement)
 		self.ACT_export.triggered.connect(self.handleExport)
-		self.VIEW_cols.doubleClicked.connect(self.handleDataEdit)
+
+		self.LST_shows.doubleClicked.connect(self.handleDataEdit)
+		self.LST_seqs.doubleClicked.connect(self.handleDataEdit)
+		self.LST_shots.doubleClicked.connect(self.handleDataEdit)
+
+		self.LST_shows.selectionModel().currentChanged.connect(self.handleShowSelected)
+		self.LST_seqs.selectionModel().currentChanged.connect(self.handleSeqSelected)
+		self.LST_shots.selectionModel().currentChanged.connect(self.handleShotSelected)
+
 		self.ACT_find.triggered.connect(self.findDialog.show)
 		self.ACT_prefGeneral.triggered.connect(lambda: self.handleConfigEditor(0))
 		self.ACT_prefPerms.triggered.connect(lambda: self.handleConfigEditor(1))
@@ -1233,6 +1405,23 @@ class ManagerWindow(QMainWindow):
 		self.MENU_elementTypes.addSeparator()
 		self.MENU_elementTypes.addAction('View All').triggered.connect(lambda: self.handleElementTypeFilter(True))
 		self.MENU_elementTypes.addAction('Hide All').triggered.connect(lambda: self.handleElementTypeFilter(False))
+
+	@property
+	def currentSelectionIndex(self):
+		showIdx = self.LST_shows.selectionModel().currentIndex()
+		seqIdx = self.LST_seqs.selectionModel().currentIndex()
+		shotIdx = self.LST_shots.selectionModel().currentIndex()
+
+		if showIdx and showIdx.isValid() and showIdx.internalPointer():
+			if seqIdx and seqIdx.isValid() and seqIdx.internalPointer():
+				if shotIdx and shotIdx.isValid() and shotIdx.internalPointer():
+					return shotIdx
+				else:
+					return seqIdx
+			else:
+				return showIdx
+		else:
+			return None
 
 	def loadOldSchool(self):
 		self.mainDock.hide()
@@ -1298,7 +1487,7 @@ class ManagerWindow(QMainWindow):
 			if action.isChecked():
 				self.elTypeFilter.append(action.text())
 
-		self.handleDataSelection(self.currentSelectionIndex, None)
+		self.handleShotSelected()
 
 	def handleElementTypeFilter(self, view=True):
 		if view:
@@ -1309,16 +1498,21 @@ class ManagerWindow(QMainWindow):
 		for action in self.MENU_elementTypes.actions():
 			action.setChecked(view)
 
-		self.handleDataSelection(self.currentSelectionIndex, None)
+		self.handleShotSelected()
 
 	def handleExplorer(self):
 		item = self.elementList.cellWidget(self.elementList.currentRow(), self.elementList.currentColumn())
-
 		# Fall back to selection in the column view and try to show the file location for that
 		if not item:
-			idx = self.VIEW_cols.selectionModel().currentIndex()
+			idx = self.LST_shots.selectionModel().currentIndex()
 
-			if not idx.isValid():
+			if not idx or not idx.isValid():
+				idx = self.LST_seqs.selectionModel().currentIndex()
+
+				if not idx or not idx.isValid():
+					idx = self.LST_shows.selectionModel().currentIndex()
+
+			if not idx or not idx.isValid():
 				return
 
 			fileutils.openPathInExplorer(idx.internalPointer().data(0).work_path)
@@ -1336,66 +1530,40 @@ class ManagerWindow(QMainWindow):
 		NewShowDialog(self).show()
 
 	def handleNewSequence(self):
-		index = self.VIEW_cols.selectionModel().currentIndex()
+		index = self.LST_shows.selectionModel().currentIndex()
 
 		if not index.isValid():
 			return
 
-		node = index.internalPointer()
-		parent = node.parent()
-		data = node.data(0)
+		show = index.internalPointer().data(0)
 
-		while not isinstance(data, Show) and parent:
-			data = parent.data(0)
-			parent = parent.parent()
-
-		# data is now the Show
-		NewSequenceDialog(self, data.alias).show()
+		NewSequenceDialog(self, show.alias).show()
 
 	def handleNewShot(self):
-		index = self.VIEW_cols.selectionModel().currentIndex()
+		showIdx = self.LST_shows.selectionModel().currentIndex()
+		seqIdx = self.LST_seqs.selectionModel().currentIndex()
 
-		if not index.isValid():
+		if not showIdx.isValid() or not seqIdx.isValid():
 			return
 
-		node = index.internalPointer()
-		parent = node.parent()
-		data = node.data(0)
-		seq = None
+		show = showIdx.internalPointer().data(0)
+		seq = seqIdx.internalPointer().data(0)
 
-		while not isinstance(data, Show) and parent:
-			if isinstance(data, Sequence):
-				seq = data
-
-			data = parent.data(0)
-			parent = parent.parent()
-
-		# data is now the Show
-		NewShotDialog(self, data.alias, seq.num).show()
+		NewShotDialog(self, show.alias, seq.num).show()
 
 	def handleNewElement(self):
-		index = self.VIEW_cols.selectionModel().currentIndex()
+		showIdx = self.LST_shows.selectionModel().currentIndex()
+		seqIdx = self.LST_seqs.selectionModel().currentIndex()
+		shotIdx = self.LST_shots.selectionModel().currentIndex()
 
-		if not index.isValid():
+		if not showIdx.isValid():
 			return
 
-		node = index.internalPointer()
-		parent = node.parent()
-		data = node.data(0)
-		seq = None
-		shot = None
+		show = showIdx.internalPointer().data(0)
+		seq = seqIdx.internalPointer().data(0) if seqIdx and seqIdx.isValid() else None
+		shot = shotIdx.internalPointer().data(0) if shotIdx and shotIdx.isValid() else None
 
-		while not isinstance(data, Show) and parent:
-			if isinstance(data, Sequence):
-				seq = data
-			elif isinstance(data, Shot):
-				shot = data
-
-			data = parent.data(0)
-			parent = parent.parent()
-
-		# data is now the Show
-		NewElementDialog(self, data, seq, shot).show()
+		NewElementDialog(self, show, seq, shot).show()
 
 	def handleNewFix(self):
 		FixDialog(self).show()
@@ -1428,10 +1596,10 @@ class ManagerWindow(QMainWindow):
 			self.elementList.handleElementEdit()
 		else:
 			# Fallback to show/seq/shot
-			self.handleDataEdit(self.VIEW_cols.currentIndex())
+			self.handleDataEdit(self.LST_shows.currentIndex())
 
 	def handleUpdateCheckpoint(self):
-		idx = self.VIEW_cols.selectionModel().currentIndex()
+		idx = self.LST_shots.selectionModel().currentIndex()
 
 		if not idx.isValid():
 			return
@@ -1442,7 +1610,7 @@ class ManagerWindow(QMainWindow):
 		UpdateCheckpointDialog(self, idx.internalPointer().data(0)).show()
 
 	def handleCheckpointStatus(self):
-		idx = self.VIEW_cols.selectionModel().currentIndex()
+		idx = self.LST_seqs.selectionModel().currentIndex()
 
 		if not idx.isValid():
 			return
@@ -1493,18 +1661,18 @@ class ManagerWindow(QMainWindow):
 			self.MENU_contextMenu.addSeparator()
 			self.MENU_contextMenu.addAction(self.ACT_shotManifest)
 
-	def checkSelection(self):
+	def checkSelection(self, idx):
 		self.ACT_newSeq.setEnabled(False)
 		self.ACT_newShot.setEnabled(False)
 		self.ACT_newElement.setEnabled(False)
 		self.ACT_editProperties.setEnabled(False)
 
-		if not self.currentSelectionIndex:
-			return
-
 		self.ACT_editProperties.setEnabled(True)
 
-		item = self.currentSelectionIndex.internalPointer().data(0)
+		if not idx.internalPointer():
+			idx = self.LST_shows.selectionModel().currentIndex()
+
+		item = idx.internalPointer().data(0)
 
 		if isinstance(item, Show):
 			self.buildContextMenu(Show)
@@ -1524,39 +1692,61 @@ class ManagerWindow(QMainWindow):
 
 		self.configureUiForPerms()
 
-	def handleDataSelection(self, currentIndex, oldIndex):
-		if not currentIndex or not currentIndex.isValid():
-			self.currentSelectionIndex = None
-			self.elementList.clearContents()
-			self.elementList.setRowCount(0)
-			return
-
-		self.currentSelectionIndex = currentIndex
-
+	def handleShowSelected(self):
 		QApplication.instance().setOverrideCursor(QCursor(Qt.WaitCursor))
-		self.checkSelection()
-
 		self.elementList.clearContents()
 		self.elementList.setRowCount(0)
 
-		container = currentIndex.internalPointer().data(0)
-		els = []
+		idx = self.LST_shows.selectionModel().currentIndex()
+		self.checkSelection(idx)
 
-		if isinstance(container, Show) and container.alias != env.getEnvironment('show'):
-			self.console.inject(['pop', '"{}"'.format(container.alias)])
-			els = container.getElements(
-				types=self.elTypeFilter if self.elTypeFilter else [''],
-				exclusive=True,
-				debug=True
-			)
-			if self.globalElViewer:
-				self.globalElViewer.widget().setElements(container.getElements())
-		else:
-			els = container.getElements(
-				types=self.elTypeFilter if self.elTypeFilter else [''],
-				exclusive=True,
-				debug=True
-			)
+		if not idx or not idx.isValid() or not idx.internalPointer():
+			QApplication.instance().restoreOverrideCursor()
+			return
+
+		container = idx.internalPointer().data(0)
+
+		self.seqModel.setSequences(container.getSequences())
+		self.shotModel.setShots(None)
+		self.console.inject(['pop', '"{}"'.format(container.alias)])
+
+		if self.globalElViewer:
+			self.globalElViewer.widget().setElements(container.getElements())
+
+		self.elementList.setContainer(container)
+		QApplication.instance().restoreOverrideCursor()
+
+	def handleSeqSelected(self):
+		QApplication.instance().setOverrideCursor(QCursor(Qt.WaitCursor))
+		self.elementList.clearContents()
+		self.elementList.setRowCount(0)
+
+		idx = self.LST_seqs.selectionModel().currentIndex()
+		self.checkSelection(idx)
+
+		if not idx or not idx.isValid() or not idx.internalPointer():
+			QApplication.instance().restoreOverrideCursor()
+			return self.handleShowSelected()
+
+		container = idx.internalPointer().data(0)
+		self.shotModel.setShots(container.getShots())
+
+		self.elementList.setContainer(container)
+		QApplication.instance().restoreOverrideCursor()
+
+	def handleShotSelected(self):
+		QApplication.instance().setOverrideCursor(QCursor(Qt.WaitCursor))
+		self.elementList.clearContents()
+		self.elementList.setRowCount(0)
+
+		idx = self.LST_shots.selectionModel().currentIndex()
+		self.checkSelection(idx)
+
+		if not idx or not idx.isValid() or not idx.internalPointer():
+			QApplication.instance().restoreOverrideCursor()
+			return self.handleSeqSelected()
+
+		container = idx.internalPointer().data(0)
 
 		self.elementList.setContainer(container)
 		QApplication.instance().restoreOverrideCursor()
@@ -1571,23 +1761,25 @@ class ManagerWindow(QMainWindow):
 			with Manager() as mgr:
 				mgr.initTables()
 
-			self.model = ShowModel(db.getShows())
-
-			self.VIEW_cols.setModel(self.model)
-			self.VIEW_cols.setSelectionModel(QItemSelectionModel(self.model))
-			self.VIEW_cols.selectionModel().currentChanged.connect(self.handleDataSelection)
+			self.showModel.setShows(db.getShows())
 			self.ACT_reload.setEnabled(True)
 
-			indexes = self.model.getShowIndexes()
+			indexes = self.showModel.getShowIndexes()
 
 			if indexes:
-				self.VIEW_cols.setCurrentIndex(indexes[0])
-				self.handleDataSelection(indexes[0], None)
+				self.LST_shows.setCurrentIndex(indexes[0])
+				self.handleShowSelected()
 
 	def handleDBReload(self):
 		QCoreApplication.instance().setOverrideCursor(QCursor(Qt.WaitCursor))
-		self.model.setShows(db.getShows())
-		self.handleDataSelection(QModelIndex(), QModelIndex())
+		self.showModels.setShows(db.getShows())
+
+		indexes = self.showModel.getShowIndexes()
+
+		if indexes:
+			self.LST_shows.setCurrentIndex(indexes[0])
+			self.handleShowSelected()
+
 		self.permHandler = perms.PermissionHandler()
 		QCoreApplication.instance().restoreOverrideCursor()
 
@@ -1642,8 +1834,8 @@ class BasicElementView(QTableWidget):
 
 		els = []
 
-		if container:
-			els = container.getElements(exclusive=True)
+		if container and self.parent.elTypeFilter:
+			els = container.getElements(exclusive=True, types=self.parent.elTypeFilter)
 
 		self.setRowCount(len(els))
 
