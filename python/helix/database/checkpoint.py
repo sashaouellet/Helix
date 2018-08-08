@@ -14,7 +14,7 @@ class Checkpoint(DatabaseObject):
 	LOCK_FOR_ANIM = 'lock for animation'
 	ANIM_ROUGH = 'animation rough'
 	ANIM_FINAL = 'animation final'
-	SET_DECORATION = 'set decoration'
+	SET_DRESSING = 'set dressing'
 	SHADING = 'shading'
 	MASTER_LIGHTING = 'master lighting'
 	SHOT_LIGHTING = 'shot lighting'
@@ -25,7 +25,7 @@ class Checkpoint(DatabaseObject):
 	DELIVERED = 'delivered'
 
 	STAGES = [LAYOUT, CAMERA_POLISH, EDITORIAL, LOCK_FOR_ANIM, ANIM_ROUGH,
-	ANIM_FINAL, SET_DECORATION, SHADING, MASTER_LIGHTING, SHOT_LIGHTING,
+	ANIM_FINAL, SET_DRESSING, SHADING, MASTER_LIGHTING, SHOT_LIGHTING,
 	FX, CFX, COMP, DIRECTOR_REVIEW, DELIVERED]
 
 	STATUS = {
