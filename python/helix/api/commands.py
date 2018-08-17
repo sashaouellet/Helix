@@ -1,15 +1,9 @@
 import sys, os, shlex, shutil, getpass, traceback
 import argparse
 import helix.environment.environment as env
-import helix.database.database as db
-from helix.database.show import Show
-from helix.database.sequence import Sequence
-from helix.database.shot import Shot
-from helix.database.checkpoint import Checkpoint
-from helix.database.element import Element
-from helix.database.take import Take
+from helix import hxdb, Show, Sequence, Shot, Element, Checkpoint, Take
 from helix.api.exceptions import *
-from helix.environment.permissions import PermissionHandler
+from helix.environment.permissions import PermissionHandler, permissionCheck
 
 from helix.utils.fileclassification import FrameSequence
 import helix.utils.fileutils as fileutils
@@ -22,19 +16,17 @@ if not dbLoc:
 perms = PermissionHandler()
 
 # User commands
-def mkshow(alias, name=None):
-	perms.check('helix.create.show')
-
-	if Show(alias, name=name, makeDirs=True).insert():
+@permissionCheck('CREATE_SHOW')
+def mkshow(alias, resolutionX, resolutionY, fps, name=None):
+	if Show(alias, (resolutionX, resolutionY), fps, name=name, makeDirs=True).insert():
 		print 'Successfully created new show'
 		return True
 	else:
 		raise DatabaseError('Failed to create show. Does this alias already exist?')
 
+@permissionCheck('DELETE_SHOW')
 def rmshow(showName, clean=False):
-	perms.check('helix.delete.show')
-
-	show = db.removeShow(showName, clean)
+	show = hxdb.removeShow(showName, clean)
 
 	if not show:
 		raise DatabaseError('Didn\'t recognize show: {}'.format(showName))
@@ -42,18 +34,16 @@ def rmshow(showName, clean=False):
 
 	print 'Successfully removed show'
 
+@permissionCheck('CREATE_SEQ')
 def mkseq(seqNum):
-	perms.check('helix.create.sequence')
-
 	if Sequence(seqNum, makeDirs=True).insert():
 		print 'Successfully created sequence {}'.format(seqNum)
 		return True
 	else:
 		raise DatabaseError('Failed to create sequence. Does this number already exist?')
 
+@permissionCheck('DELETE_SEQ')
 def rmseq(seqNum, clean=False):
-	perms.check('helix.delete.sequence')
-
 	seq = env.getShow().removeSequence(int(seqNum), clean)
 
 	if not seq:
@@ -62,15 +52,12 @@ def rmseq(seqNum, clean=False):
 
 	print 'Successfully removed sequence'
 
+@permissionCheck('CREATE_SHOT')
 def mkshot(seqNum, shotNum, start=0, end=0, clipName=None, checkpoints='delivered'):
-	perms.check('helix.create.shot')
-
 	shot = Shot(shotNum, seqNum, start=start, end=end, clipName=clipName, makeDirs=True)
 
 	if shot.insert():
 		stages = [s.strip().lower() for s in checkpoints.split(',')]
-
-		print stages
 
 		if 'delivered' not in stages:
 			stages.append('delivered')
@@ -83,9 +70,8 @@ def mkshot(seqNum, shotNum, start=0, end=0, clipName=None, checkpoints='delivere
 	else:
 		raise DatabaseError('Failed to create shot. Does this number already exist?')
 
+@permissionCheck('DELETE_SHOT')
 def rmshot(seqNum, shotNum, clean=False):
-	perms.check('helix.delete.shot')
-
 	seq = env.getShow().getSequence(seqNum)
 	shot = seq.removeShot(int(shotNum), clean)
 
@@ -95,10 +81,9 @@ def rmshot(seqNum, shotNum, clean=False):
 
 	print 'Successfully removed shot'
 
+@permissionCheck('POP')
 def pop(showName):
-	perms.check('helix.pop')
-
-	show = db.getShow(showName)
+	show = hxdb.getShow(showName)
 
 	if not show:
 		raise DatabaseError('Didn\'t recognize show: {}'.format(showName))
@@ -106,10 +91,10 @@ def pop(showName):
 	env.setEnvironment('show', show.alias)
 
 	print 'Set environment for {}'.format(show.alias)
+	return True
 
+@permissionCheck('CREATE_ELEMENT')
 def mke(elType, name, sequence=None, shot=None, clipName=None):
-	perms.check('helix.create.element')
-
 	if name == '-':
 		name = None
 
@@ -121,9 +106,8 @@ def mke(elType, name, sequence=None, shot=None, clipName=None):
 	else:
 		raise DatabaseError('Failed to create element. Does it already exist?')
 
+@permissionCheck('GET')
 def get(elType, name=None, sequence=None, shot=None):
-	perms.check('helix.get')
-
 	if name == '-':
 		name = None
 
@@ -136,6 +120,7 @@ def get(elType, name=None, sequence=None, shot=None):
 
 	print 'Working on {}'.format(element)
 
+@permissionCheck('CREATE_TAKE')
 def mktake(input, sequence, shot, clipName=None, commentText='', blackBars=False, shotNum=False, frame=False, author=False, comment=False, checkpoints=False, date=False, take=False):
 	take = Take(shot, sequence, clipName=clipName, comment=commentText, makeDirs=True)
 
@@ -158,15 +143,14 @@ def mktake(input, sequence, shot, clipName=None, commentText='', blackBars=False
 	take.insert()
 
 # Element-context commands
+@permissionCheck('PUBLISH')
 def pub(file, range=(), force=False):
-	perms.check('helix.publish')
 	env.getWorkingElement().versionUp(file, range=range, ignoreMissing=force)
 
 	print 'Published version: {}'.format(env.getWorkingElement().pubVersion)
 
+@permissionCheck('ROLLBACK')
 def roll(version=None):
-	perms.check('helix.rollback')
-
 	element = env.getWorkingElement()
 	newVersion = element.rollback(version=version)
 
@@ -186,6 +170,7 @@ def mod(attribute, value=None):
 		perms.check('helix.mod.get')
 		print element.get(attribute)
 
+@permissionCheck('IMPORT_ELEMENT')
 def importEl(dir, elType, name=None, sequence=None, shot=None, clipName=None, overwriteOption=0):
 	"""Imports the files in the given directory into an element's work directory. This element
 	either already exists (based on name/elType/sequence/shot) or a new one will be made with
@@ -211,8 +196,6 @@ def importEl(dir, elType, name=None, sequence=None, shot=None, clipName=None, ov
 	Raises:
 	    ImportError: If the specified directory does not exist or is not a directory.
 	"""
-	perms.check('helix.import.element')
-
 	if not os.path.isdir(dir):
 		raise ImportError('Not a directory: {}'.format(dir))
 
@@ -223,9 +206,8 @@ def importEl(dir, elType, name=None, sequence=None, shot=None, clipName=None, ov
 
 	fileutils.relativeCopyTree(dir, el.work_path, overwriteOption)
 
+@permissionCheck('EXPORT_ELEMENT')
 def export(dir, show, elType, name=None, sequence=None, shot=None, clipName=None, work=False, release=False):
-	perms.check('helix.export.element')
-
 	if not os.path.isdir(dir):
 		raise ValueError('Not a directory: {}'.format(dir))
 
@@ -252,10 +234,10 @@ def export(dir, show, elType, name=None, sequence=None, shot=None, clipName=None
 
 		fileutils.relativeCopyTree(el.release_path, finalDest)
 
+@permissionCheck('CLONE')
 def clone(show=None, sequence=None, shot=None):
 	# TODO: consider an option for also cloning the work and/or release dirs of the element
-	perms.check('helix.clone')
-	show = env.getShow() if not show else db.getShow(show)
+	show = env.getShow() if not show else hxdb.getShow(show)
 	container = None
 
 	if not show:
@@ -274,69 +256,23 @@ def clone(show=None, sequence=None, shot=None):
 
 	os.path.makedirs(cloned.getDiskLocation())
 
-def override(sequence=None, shot=None):
-	perms.check('helix.override')
-	if sequence and shot:
-		seq, s = env.getShow().getShot(sequence, shot)
-
-		if env.getWorkingElement().makeOverride(seq, s):
-			print 'Created override for sequence {} shot {}'.format(sequence, shot)
-		else:
-			print 'Override creation failed'
-	elif sequence:
-		seq = env.getShow().getSequence(sequence)
-
-		if env.getWorkingElement().makeOverride(seq):
-			print 'Created override for sequence {}'.format(sequence)
-		else:
-			print 'Override creation failed'
-	else:
-		# User is looking for overrides of the current element
-		overrides = env.getWorkingElement().getOverrides()
-
-		print 'Sequence overrides:'
-
-		if overrides[0]:
-			print '\n'.join([str(s) for s in overrides[0]])
-		else:
-			print 'None'
-
-		print 'Shot overrides:'
-
-		if overrides[1]:
-			print '\n'.join([str(s) for s in overrides[1]])
-		else:
-			print 'None'
-
-def createFile(path=None):
-	if not path:
-		perms.check('helix.workfile.get')
-		wf = env.getWorkingElement().getWorkFile('')
-		# User trying to retrieve the work file
-	else:
-		perms.check('helix.workfile.create')
-		if not os.path.exists(path):
-			raise HelixException('Cannot create work file from path: {} (File does not exist)'.format(path))
-
-		wf = env.getWorkingElement().getWorkFile(path)
-
-
+# TODO this is legacy stuff. Take a look if this is even necessary
+@permissionCheck('VIEW_SHOWS')
 def shows():
-	perms.check('helix.view.show')
-	print '\n'.join([str(s) for s in db.getShows()])
+	print '\n'.join([str(s) for s in hxdb.getShows()])
 
+@permissionCheck('VIEW_SEQS')
 def sequences():
-	perms.check('helix.view.sequence')
 	print '\n'.join([str(s) for s in sorted(env.getShow().getSequences(), key=lambda x: x.get('num'))])
 
+@permissionCheck('VIEW_SHOTS')
 def shots(seqNum):
-	perms.check('helix.view.shot')
 	seq = env.getShow().getSequence(seqNum)
 
 	print '\n'.join([str(s) for s in sorted(seq.getShots(), key=lambda x: x.get('num'))])
 
+@permissionCheck('VIEW_ELEMENTS')
 def elements(elType=None, sequence=None, shot=None, date=None):
-	perms.check('helix.view.element')
 	if elType:
 		elType = elType.split(',')
 
@@ -363,8 +299,8 @@ def elements(elType=None, sequence=None, shot=None, date=None):
 
 	print '\n'.join([str(el) for el in els])
 
+@permissionCheck('DELETE_ELEMENT')
 def rme(elType, name, sequence=None, shot=None, clean=False):
-	perms.check('helix.delete.element')
 	container = env.getShow() # Where to get element from
 
 	if sequence and shot:
@@ -379,15 +315,8 @@ def rme(elType, name, sequence=None, shot=None, clean=False):
 	print 'Successfully removed element {}'.format(element)
 
 # Debug and dev commands
-def dump(expanded=False):
-	perms.check('helix.dump')
-	if expanded:
-		print DatabaseObject.encode(db._data)
-	else:
-		print db._data
-
+@permissionCheck('GET_ENV')
 def getenv():
-	perms.check('helix.getenv')
 	print env.getAllEnv()
 
 def main(cmd, argv):
@@ -403,7 +332,10 @@ def main(cmd, argv):
 		parser = HelixArgumentParser(prog='mkshow', description='Make a new show')
 
 		parser.add_argument('alias', help='The alias of the show. Has character restrictions (i.e. no spaces or special characters)')
-		parser.add_argument('--name', '-n', help='The full name of the show. Please surround with double quotes (").')
+		parser.add_argument('resolutionX', help='The width of this show\'s resolution')
+		parser.add_argument('resolutionY', help='The height of this show\'s resolution')
+		parser.add_argument('fps', help='The frames per second that the show will follow')
+		parser.add_argument('--name', '-n', help='The full name of the show. Please surround with double quotes, i.e. "My Show"')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 
@@ -415,14 +347,8 @@ def main(cmd, argv):
 		parser.add_argument('--clean', '-c', action='store_true', help='Remove associated files/directories for this show')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
-		showName = args['showName']
 
-		print 'You are about to delete the show: {}. {}Are you sure you want to proceed? (y/n) '.format(showName, 'All files on disk associated with the show will also be deleted. ' if clean else ''),
-
-		resp = sys.stdin.readline().strip().lower()
-
-		if resp in ('y', 'yes'):
-			return rmshow(**args)
+		return rmshow(**args)
 	elif cmd == 'mkseq':
 		if not env.getEnvironment('show'):
 			print 'Please pop into a show first'

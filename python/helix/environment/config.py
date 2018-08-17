@@ -80,8 +80,6 @@ class GeneralConfigHandler(ConfigFileHandler):
 			self.interpret()
 
 	def interpret(self):
-		from helix.environment.permissions import PermissionGroup
-
 		if self.config.has_section('Formatting'):
 			if self.config.has_option('Formatting', 'DateFormat'):
 				self.dateFormat = self.config.get('Formatting', 'DateFormat')
@@ -94,26 +92,6 @@ class GeneralConfigHandler(ConfigFileHandler):
 
 		if self.config.has_section('Departments'):
 			self.departments = [d.strip() for d in self.config.get('Departments', 'departments').split(',')]
-
-		if self.config.has_section('Permissions'):
-			pattern = re.compile(r'^(\w+)(users)$')
-
-			for option in self.config.options('Permissions'):
-				match = re.match(pattern, option)
-
-				if match and match.group(2):
-					groupUsers = [g.strip() for g in self.config.get('Permissions', option).split(',')]
-					groupName = match.group(1)
-					groupPerms = [p.strip() for p in self.config.get('Permissions', match.group(1)).split(',')]
-
-					self.permGroups[groupName] = PermissionGroup(groupName, users=groupUsers, permissions=groupPerms)
-
-			if self.config.has_option('Permissions', 'DefaultGroup'):
-				perms = [p.strip() for p in self.config.get('Permissions', 'DefaultGroup').split(',')]
-				self.permGroups['defaultgroup'] = PermissionGroup('defaultgroup', users=None, permissions=perms)
-			else:
-				print 'Had to create DefaultGroup permissions since it was missing from the config file. Please note that ALL users will now be able to do ANYTHING, so modify the config accordingly!'
-				self.permGroups['defaultgroup'] = PermissionGroup('defaultgroup', users=None, permissions=['helix.*'])
 
 		if self.config.has_section('Executables-Linux'):
 			if self.config.has_option('Executables-Linux', 'maya'):
@@ -154,15 +132,6 @@ class GeneralConfigHandler(ConfigFileHandler):
 		# Departments
 		self.config.add_section('Departments')
 		self.config.set('Departments', 'departments', ', '.join(self.departments))
-
-		# Permissions
-		self.config.add_section('Permissions')
-
-		for pg in self.permGroups.values():
-			self.config.set('Permissions', pg.name, ', '.join(pg.permissions))
-
-			if pg.name != 'defaultgroup':
-				self.config.set('Permissions', pg.name + 'users', ', '.join(pg.users))
 
 		# Linux executables
 		if (self.mayaLinux or self.houdiniLinux or self.nukeLinux):

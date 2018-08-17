@@ -1,6 +1,7 @@
 import getpass
 import re
 from helix.api.exceptions import *
+from helix import DatabaseObject
 
 class PermissionNodes(object):
 	"""An "enum" for all the permission nodes for the system
@@ -10,6 +11,7 @@ class PermissionNodes(object):
 		CREATE_SEQ 		= 'helix.create.sequence',
 		CREATE_SHOT 	= 'helix.create.shot',
 		CREATE_ELEMENT 	= 'helix.create.element',
+		CREATE_TAKE		= 'helix.create.take',
 		DELETE_SHOW 	= 'helix.delete.show',
 		DELETE_SEQ 		= 'helix.delete.sequence',
 		DELETE_SHOT 	= 'helix.delete.shot',
@@ -21,15 +23,12 @@ class PermissionNodes(object):
 		MOD_SET			= 'helix.mod.set',
 		MOD_GET			= 'helix.mod.get',
 		IMPORT_ELEMENT 	= 'helix.import.element',
+		EXPORT_ELEMENT	= 'helix.export.element',
 		CLONE 			= 'helix.clone',
-		OVERRIDE		= 'helix.override',
-		GET_WORKFILE 	= 'helix.workfile.get',
-		CREATE_WORKFILE = 'helix.workfile.create',
 		VIEW_SHOWS 		= 'helix.view.show',
 		VIEW_SEQS 		= 'helix.view.sequence',
 		VIEW_SHOTS 		= 'helix.view.shot',
 		VIEW_ELEMENTS 	= 'helix.view.element',
-		DUMP_DB 		= 'helix.dump',
 		GET_ENV 		= 'helix.getenv',
 		VIEW_CONFIG 	= 'helix.config.view',
 		EDIT_CONFIG 	= 'helix.config.edit'
@@ -53,39 +52,77 @@ class PermissionNodes(object):
 
 		return list(set(ret))
 
-class PermissionGroup(object):
-	def __init__(self, name, users=[], permissions=[]):
-		self.name = name
-		self.users = users
-		self.permissions = permissions
+class PermissionGroup(DatabaseObject):
+	DEFAULT = 'defaultgroup'
+	TABLE = 'permissions'
+	PK = 'group_name'
 
-	def __repr__(self):
-		return '[{}]: {} -- {}'.format(self.name, ', '.join(self.users if self.users else []), ', '.join(self.permissions if self.permissions else []))
+	def __init__(self, name, permissions=[], dummy=False):
+		self.table = PermissionGroup.TABLE
+		self._exists = None
+
+		if dummy:
+			return
+
+		if not name:
+			raise ValueError('Permission group name cannot be empty')
+
+		self.group_name = name
+
+		fetched = self.exists(fetch=True)
+
+		if fetched:
+			self.unmap(fetched)
+			self._exists = True
+		else:
+			self._exists = False
+			self.group_name = name
+			self.permissionList = permissions
+
+	@property
+	def perm_nodes(self):
+		return str(self.permissionList).replace("'", '"')
+
+	@perm_nodes.setter
+	def perm_nodes(self, perm_nodes):
+		try:
+			if perm_nodes:
+				self.permissionList = eval(perm_nodes)
+			else:
+				self.permissionList = []
+		except:
+			self.permissionList = []
+
+	@property
+	def pk(self):
+		return PermissionGroup.PK
+
+	@staticmethod
+	def dummy():
+		return PermissionGroup(None, dummy=True)
 
 class PermissionHandler(object):
 	def __init__(self):
 		import helix.environment.environment as env
 
 		self.currentUser = getpass.getuser()
-		self.group = None
-		self.permNodes = []
 
-		cfg = env.getConfig()
+		from helix import Person
+		user = Person.fromPk(self.currentUser)
 
-		pattern = re.compile(r'^(\w+)(users)$')
+		if not user:
+			# User not existing causes other problems down the line...
+			# Should we handle that here? Or do I just silently ignore and put them
+			# in the default group..
+			permGroup = PermissionGroup.fromPk(PermissionGroup.DEFAULT)
+		else:
+			permGroup = user.permGroup
 
-		for option in cfg.config.options('Permissions'):
-			match = re.match(pattern, option)
+			if not permGroup:
+				permGroup = PermissionGroup.fromPk(PermissionGroup.DEFAULT)
 
-			if match and match.group(2):
-				if self.currentUser in cfg.config.get('Permissions', option):
-					self.group = match.group(1)
-					self.permNodes = cfg.config.get('Permissions', match.group(1))
-
-		# If not in any group, defaults to group "default"
-		if not self.group:
-			self.group = 'defaultgroup'
-			self.permNodes = cfg.config.get('Permissions', 'defaultgroup')
+		self.group = permGroup.group_name
+		self.permNodes = permGroup.permissionList
 
 	def check(self, node, silent=False):
 		# First check negated node, since that would override anything else
@@ -131,3 +168,19 @@ class PermissionHandler(object):
 
 class PermissionError(HelixException):
 	pass
+
+def permissionCheck(node):
+	_node = node # In case we error
+	if node not in PermissionNodes.nodes.values():
+		node = PermissionNodes.nodes.get(node)
+
+		if not node:
+			raise RuntimeError('Invalid node {} does not exist'.format(_node))
+
+	def realDecorator(function):
+		def wrapper(*args, **kwargs):
+			PermissionHandler().check(node)
+			return function(*args, **kwargs)
+		return wrapper
+	return realDecorator
+

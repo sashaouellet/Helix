@@ -30,6 +30,17 @@ class Person(DatabaseObject):
 
 			self.department = department.lower()
 
+			from helix.environment.permissions import PermissionGroup
+
+			# Create the default group right away if it doesn't exist
+			# otherwise, we can't insert the user into the database with that group
+			defGroup = PermissionGroup(PermissionGroup.DEFAULT)
+
+			if not defGroup.exists():
+				defGroup.insert()
+
+			self.perm_group = PermissionGroup.DEFAULT
+
 			if self.department not in env.cfg.departments and self.department != 'general':
 				raise ValueError('Not a valid department ({}). Options are: {}'.format(self.department, ', '.join(['general'] + env.cfg.departments)))
 
@@ -38,6 +49,11 @@ class Person(DatabaseObject):
 			return '{} ({})'.format(self.full_name, self.username)
 		else:
 			return self.username
+
+	@property
+	def permGroup(self):
+		from helix.environment.permissions import PermissionGroup
+		return PermissionGroup.fromPk(self.perm_group)
 
 	@property
 	def pk(self):

@@ -76,6 +76,7 @@ class Manager(object):
 	def formatError(self, obj, e):
 		error = str(e)
 
+		from helix import DatabaseObject
 		if not isinstance(obj, DatabaseObject):
 			return error
 
@@ -88,11 +89,21 @@ class Manager(object):
 	def initTables(self):
 		self.conn.execute(
 		'''
+			CREATE TABLE IF NOT EXISTS 'permissions' (
+				'group_name'	TEXT PRIMARY KEY NOT NULL UNIQUE,
+				'perm_nodes'	TEXT
+			)
+		'''
+		)
+		self.conn.execute(
+		'''
 			CREATE TABLE IF NOT EXISTS 'people' (
 				'username'		VARCHAR(10) NOT NULL UNIQUE,
 				'full_name'		TEXT,
 				'department'	TEXT NOT NULL,
-				PRIMARY KEY('username')
+				'perm_group'	TEXT NOT NULL,
+				PRIMARY KEY('username'),
+				FOREIGN KEY('perm_group') REFERENCES 'permissions'('group_name')
 			)
 		'''
 		)
@@ -105,6 +116,9 @@ class Manager(object):
 				'release_path'	TEXT NOT NULL,
 				'author'		VARCHAR(10) NOT NULL,
 				'creation'		DATE NOT NULL,
+				'resolution_x'	INTEGER NOT NULL,
+				'resolution_y'	INTEGER NOT NULL,
+				'fps'			NUMERIC NOT NULL,
 				FOREIGN KEY('author') REFERENCES 'people'('username'),
 				PRIMARY KEY('alias')
 			)
@@ -179,14 +193,14 @@ class Manager(object):
 		self.conn.execute(
 		'''
 			CREATE TABLE IF NOT EXISTS 'checkpoints' (
-				'id'					VARCHAR(32) PRIMARY KEY NOT NULL UNIQUE,
-				'shotId'				VARCHAR(32) NOT NULL,
-				'show'					VARCHAR(10) NOT NULL,
-				'stage'					TEXT NOT NULL,
-				'status'				TEXT NOT NULL,
-				'begin_date'			DATE,
-				'completion_date'		DATE,
-				'assigned_to'			VARCHAR(10),
+				'id'				VARCHAR(32) PRIMARY KEY NOT NULL UNIQUE,
+				'shotId'			VARCHAR(32) NOT NULL,
+				'show'				VARCHAR(10) NOT NULL,
+				'stage'				TEXT NOT NULL,
+				'status'			TEXT NOT NULL,
+				'begin_date'		DATE,
+				'completion_date'	DATE,
+				'assigned_to'		VARCHAR(10),
 				FOREIGN KEY('shotId') REFERENCES 'shots'('id'),
 				FOREIGN KEY('show') REFERENCES 'shows'('alias'),
 				FOREIGN KEY('assigned_to') REFERENCES 'people'('username')
@@ -198,6 +212,7 @@ class Manager(object):
 			CREATE TABLE IF NOT EXISTS 'fixes' (
 				'id'			VARCHAR(32) PRIMARY KEY NOT NULL UNIQUE,
 				'num'			INTEGER NOT NULL,
+				'type'			TEXT NOT NULL,
 				'author'		VARCHAR(10) NOT NULL,
 				'creation'		DATE NOT NULL,
 				'for_dept'		TEXT NOT NULL,
@@ -215,6 +230,7 @@ class Manager(object):
 				'shot'			INTEGER,
 				'shotId'		VARCHAR(32),
 				'elementId'		VARCHAR(32),
+				'comments'		TEXT,
 				FOREIGN KEY('author') REFERENCES 'people'('username'),
 				FOREIGN KEY('fixer') REFERENCES 'people'('username'),
 				FOREIGN KEY('show') REFERENCES 'shows'('alias'),
@@ -227,15 +243,16 @@ class Manager(object):
 		self.conn.execute(
 		'''
 			CREATE TABLE IF NOT EXISTS 'publishedFiles' (
-				'id'		VARCHAR(32) PRIMARY KEY NOT NULL UNIQUE,
-				'version'	INTEGER NOT NULL,
-				'author'	VARCHAR(10) NOT NULL,
-				'creation'	DATE NOT NULL,
-				'comment'	TEXT,
-				'file_path'	TEXT NOT NULL,
-				'elementId'	VARCHAR(32) NOT NULL,
-				'fixId'		VARCHAR(32),
-				'show'		VARCHAR(10),
+				'id'				VARCHAR(32) PRIMARY KEY NOT NULL UNIQUE,
+				'version'			INTEGER NOT NULL,
+				'author'			VARCHAR(10) NOT NULL,
+				'creation'			DATE NOT NULL,
+				'comment'			TEXT,
+				'file_path'			TEXT NOT NULL,
+				'elementId'			VARCHAR(32) NOT NULL,
+				'fixId'				VARCHAR(32),
+				'show'				VARCHAR(10),
+				'versionless_path', TEXT NOT NULL,
 				FOREIGN KEY('author') REFERENCES 'people'('username'),
 				FOREIGN KEY('elementId') REFERENCES 'elements'('id')
 				FOREIGN KEY('fixId') REFERENCES 'fixes'('id')
