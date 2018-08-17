@@ -2,6 +2,7 @@ import os
 import shutil
 
 from helix.database.database import DatabaseObject
+from helix.database.mixins import FixMixin
 from helix.database.show import Show
 from helix.database.sequence import Sequence
 from helix.database.shot import Shot
@@ -12,7 +13,7 @@ from helix.utils.fileclassification import FrameSequence
 import helix.utils.fileutils as fileutils
 from helix.api.exceptions import PublishError
 
-class Element(DatabaseObject):
+class Element(DatabaseObject, FixMixin):
 
 	"""Externally referred to as "Assets", Elements are the children of ElementContainers
 	(Shows, Sequences, Shots). They represent any particular asset that can be composed
@@ -93,6 +94,9 @@ class Element(DatabaseObject):
 	def __init__(self, name, elType, show=None, sequence=None, shot=None, clipName=None, author=None, makeDirs=False, dummy=False):
 		self.table = Element.TABLE
 
+		if dummy:
+			return
+
 		if name is not None:
 			sanitary, reasons = utils.isSanitary(name)
 
@@ -108,9 +112,6 @@ class Element(DatabaseObject):
 
 		self.sequenceId = None
 		self.shotId = None
-
-		if dummy:
-			return
 
 		if name is None:
 			if shot is None or sequence is None:
@@ -148,9 +149,9 @@ class Element(DatabaseObject):
 			self.thumbnail = None
 			self.shot_clipName = clipName
 
-			s = Show(self.show)
+			s = Show.fromPk(self.show)
 
-			if not s.exists():
+			if not s:
 				raise ValueError('No such show: {}'.format(show))
 
 			p = Person(self.author)
@@ -307,13 +308,15 @@ class Element(DatabaseObject):
 			if missing and not ignoreMissing:
 				raise PublishError('Missing frames from sequence: {}'.format(FrameSequence.prettyPrintFrameList(missing)))
 
-			versionedSeq = self.publishFile(sequence)
-			pf = PublishedFile(self.name, self.type, versionedSeq, show=self.show, sequence=self.sequence, shot=self.shot)
+			versionless, versionedSeq = self.publishFile(sequence)
+			name = self.name if not self.name.startswith('_') else None
+			pf = PublishedFile(name, self.type, versionedSeq, versionless, show=self.show, sequence=self.sequence, shot=self.shot)
 			pf.insert()
 			self.set('pubVersion', pf.version)
 		else:
-			versioned = self.publishFile(sourceFile)
-			pf = PublishedFile(self.name, self.type, versioned, show=self.show, sequence=self.sequence, shot=self.shot)
+			versionless, versioned = self.publishFile(sourceFile)
+			name = self.name if not self.name.startswith('_') else None
+			pf = PublishedFile(name, self.type, versioned, versionless, show=self.show, sequence=self.sequence, shot=self.shot)
 			pf.insert()
 			self.set('pubVersion', pf.version)
 
@@ -363,7 +366,7 @@ class Element(DatabaseObject):
 			for versionless, versioned in zip(fileName.getFramesAsFilePaths(), newSeq.getFramesAsFilePaths()):
 				os.link(versioned, versionless)
 
-			return newSeq.getFormatted(includeDir=True)
+			return (fileName.getFormatted(includeDir=True), newSeq.getFormatted(includeDir=True))
 		elif os.path.isdir(fileName):
 			print 'Publishing folder...'
 			# Directory publish
@@ -390,7 +393,7 @@ class Element(DatabaseObject):
 			shutil.copytree(fileName, versionedDest)
 			fileutils.linkPath(versionedDest, versionless)
 
-			return versionedDest
+			return (versionless, versionedDest)
 		else:
 			print 'Publishing single file...'
 			# Single file publish
@@ -414,7 +417,7 @@ class Element(DatabaseObject):
 			shutil.copy2(fileName, versionedDest)
 			os.link(versionedDest, versionless)
 
-			return versionedDest
+			return (versionless, versionedDest)
 
 		# # TODO: make versionless and versionDest read-only?
 
@@ -474,6 +477,16 @@ class Element(DatabaseObject):
 			else:
 				return None
 
+	def getLatestPublishedFile(self):
+		pfs = self.getPublishedFiles()
+
+		if pfs:
+			pfs.sort(key=lambda pf: pf.version)
+
+			return pfs[-1]
+		else:
+			return None
+
 	def clone(self, container):
 		el = container.getElement(self.name, self.type)
 
@@ -522,4 +535,4 @@ class Element(DatabaseObject):
 
 	@staticmethod
 	def dummy():
-		return Element('aa', Element.ELEMENT_TYPES[0])
+		return Element(None, Element.ELEMENT_TYPES[0], dummy=True)

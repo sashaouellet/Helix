@@ -14,7 +14,7 @@ class PublishedFile(DatabaseObject):
 	TABLE='publishedFiles'
 	PK='id'
 
-	def __init__(self, elementName, elementType, filePath, show=None, sequence=None, shot=None, comment=None, fix=None, dummy=False):
+	def __init__(self, elementName, elementType, filePath, versionlessFilePath, show=None, sequence=None, shot=None, comment=None, fix=None, dummy=False):
 		self.table = PublishedFile.TABLE
 		self.elementName = elementName
 		self.elementType = elementType
@@ -32,8 +32,11 @@ class PublishedFile(DatabaseObject):
 		if filePath is None:
 			raise ValueError('Must provide a file path')
 
-		if self.elementName is None or self.elementType is None:
-			raise ValueError('Must provide an element name and type to attach this Published File to')
+		if versionlessFilePath is None:
+			raise ValueError('Must provide a versionless file path')
+
+		if self.elementType is None:
+			raise ValueError('Must provide an element type to attach this Published File to')
 
 		e = Element(self.elementName, self.elementType, show=self.show, sequence=sequence, shot=shot)
 
@@ -66,11 +69,12 @@ class PublishedFile(DatabaseObject):
 			self.creation = creationInfo[1]
 			self.comment = comment
 			self.file_path = filePath
+			self.versionless_path = versionlessFilePath
 
-			s = Show(self.show)
+			s = Show.fromPk(self.show)
 			p = Person(self.author)
 
-			if not s.exists():
+			if not s:
 				raise ValueError('No such show: {}'.format(self.show))
 
 			if not p.exists():
@@ -121,5 +125,5 @@ class PublishedFile(DatabaseObject):
 
 	@staticmethod
 	def dummy():
-		return PublishedFile('', '', '', dummy=True)
+		return PublishedFile('', '', '', '', dummy=True)
 
