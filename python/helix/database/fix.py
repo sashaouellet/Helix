@@ -35,8 +35,17 @@ class Fix(DatabaseObject):
 		10: 'Critical'
 	}
 
-	def __init__(self, title, body, dept, show=None, sequence=None, shot=None, clipName=None, elementName=None, elementType=None, author=None, status=STATUS[0], priority=3, dummy=False):
+	TYPE_FIX = 'fix'
+	TYPE_TASK = 'task'
+	TYPES = [TYPE_TASK, TYPE_FIX]
+
+	def __init__(self, fixType, title, body, dept, show=None, sequence=None, shot=None, clipName=None, elementName=None, elementType=None, author=None, status=STATUS[0], priority=3, dummy=False):
 		self.table = Fix.TABLE
+		self.commentList = []
+
+		if dummy:
+			return
+
 		self.title = title
 		self.body = body
 		self.show = show if show else env.getEnvironment('show')
@@ -49,9 +58,6 @@ class Fix(DatabaseObject):
 		self.sequenceId = None
 		self.shotId = None
 		self.elementId = None
-
-		if dummy:
-			return
 
 		if not title:
 			raise ValueError('Must specify a fix title')
@@ -69,6 +75,7 @@ class Fix(DatabaseObject):
 			self._exists = True
 		else:
 			creationInfo = env.getCreationInfo(format=False)
+			self.type = fixType.lower()
 			self.author = author if author else creationInfo[0]
 			self.creation = creationInfo[1]
 			self.status = status if status in Fix.STATUS.values() else Fix.STATUS[0]
@@ -80,12 +87,15 @@ class Fix(DatabaseObject):
 			self.num = Fix.nextFixNum(self.show)
 			self.for_dept = dept.lower()
 
+			if self.type not in Fix.TYPES:
+				raise ValueError('Type must be one of: {}, not: {}'.format(', '.join(Fix.TYPES, self.type)))
+
 			if self.for_dept not in env.cfg.departments and self.for_dept != 'general':
 				raise ValueError('Invalid department ({}) to assign fix to. Options are: {}'.format(self.for_dept, ', '.join(['general'] + env.cfg.departments)))
 
-			s = Show(self.show)
+			s = Show.fromPk(self.show)
 
-			if not s.exists():
+			if not s:
 				raise ValueError('No such show: {}'.format(show))
 
 			p = Person(self.author)
@@ -134,6 +144,24 @@ class Fix(DatabaseObject):
 					)
 				else:
 					self.elementId = el.id
+
+	def addComment(self, text):
+		self.commentList.append((env.USER, str(env.getCreationInfo(format=False)[1]), text))
+		self.set('comments', self.comments)
+
+	@property
+	def comments(self):
+		return str(self.commentList).replace("'", '"')
+
+	@comments.setter
+	def comments(self, comments):
+		try:
+			if comments:
+				self.commentList = eval(comments)
+			else:
+				self.commentList = []
+		except:
+			self.commentList = []
 
 	@property
 	def id(self):
@@ -219,4 +247,4 @@ class Fix(DatabaseObject):
 
 	@staticmethod
 	def dummy():
-		return Fix('', '', '', dummy=True)
+		return Fix(None, None, None, None, dummy=True)

@@ -147,7 +147,7 @@
    </widget>
    <widget class="QMenu" name="menuFixes">
     <property name="title">
-     <string>Fixes</string>
+     <string>Tasks</string>
     </property>
     <widget class="QMenu" name="menuView_2">
      <property name="title">
@@ -469,7 +469,7 @@
   </action>
   <action name="ACT_deptFixes">
    <property name="text">
-    <string>Department fixes</string>
+    <string>Department tasks</string>
    </property>
   </action>
   <action name="ACT_myFixes">

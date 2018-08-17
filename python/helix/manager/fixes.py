@@ -12,6 +12,7 @@ from helix.database.database import DatabaseObject
 import helix.environment.environment as env
 from helix.utils.qtutils import Node
 import helix.utils.utils as utils
+from helix.manager.comment import CommentWidget
 
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
@@ -31,6 +32,8 @@ class FixDialog(QDialog):
 		self.checkCanCreate()
 
 	def initUI(self):
+		self.CMB_type.addItems(Fix.TYPES)
+
 		self.CMB_status.setDisabled(self.fix is None)
 		self.CMB_status.addItems(Fix.STATUS.values())
 
@@ -46,6 +49,7 @@ class FixDialog(QDialog):
 		self.LNE_assignTo.textChanged.connect(self.fixerChanged)
 
 		self.CMB_show.addItems([s.alias for s in db.getShows()])
+		self.CMB_show.setCurrentIndex(self.CMB_show.findText(env.getEnvironment('show')))
 
 		today = QDate.currentDate()
 		self.DATE_due.setDate(today.addDays(14))
@@ -105,6 +109,9 @@ class FixDialog(QDialog):
 			self.LNE_title.setReadOnly(True)
 			self.TXT_body.setReadOnly(True)
 
+			for comment in reversed(self.fix.commentList):
+				self.LAY_comments.addWidget(CommentWidget(self, comment))
+
 			self.setWindowTitle('Fix #{} ({})'.format(self.fix.num, self.fix.show))
 
 	def toggleDue(self):
@@ -130,7 +137,7 @@ class FixDialog(QDialog):
 		seq = int(str(self.CMB_seq.currentText())) if str(self.CMB_seq.currentText()) and str(self.CMB_seq.currentText()) != '--' else None
 		shotIndex = self.CMB_shot.currentIndex() if str(self.CMB_shot.currentText()) and str(self.CMB_shot.currentText()) != '--' else None
 		shot = self.shots[shotIndex] if shotIndex and self.shots else None
-		container = Show(show)
+		container = Show.fromPk(show)
 
 		if shot:
 			container = shot
@@ -161,7 +168,7 @@ class FixDialog(QDialog):
 
 	def populateSeqAndShot(self):
 		self.CMB_seq.clear()
-		self._show = Show(str(self.CMB_show.currentText()))
+		self._show = Show.fromPk(str(self.CMB_show.currentText()))
 		seqs = [str(s.num) for s in self._show.getSequences()]
 
 		self.CMB_seq.addItems(['--'] + sorted(seqs, key=lambda s: int(s)))
@@ -194,6 +201,7 @@ class FixDialog(QDialog):
 		status = str(self.CMB_status.currentText())
 		priority = int(self.CMB_priority.currentIndex())
 		dept = str(self.CMB_dept.currentText())
+		fixType = str(self.CMB_type.currentText())
 
 		if username and len(username) <= 10:
 			fixer = Person(username)
@@ -202,6 +210,9 @@ class FixDialog(QDialog):
 
 		if self.fix:
 			# Just update instead of making a new fix
+			if fixType != self.fix.type:
+				self.fix.set('type', fixType)
+
 			if dept != self.fix.for_dept:
 				self.fix.set('for_dept', dept)
 
@@ -236,6 +247,7 @@ class FixDialog(QDialog):
 		else:
 			# There's no command-line api for this because of how cumbersome it would be to type all these parameters from that interface
 			fix = Fix(
+				fixType,
 				str(self.LNE_title.text()),
 				str(self.TXT_body.toPlainText()),
 				dept,
@@ -307,11 +319,13 @@ class FixView(QWidget):
 
 		self.CMB_priority.addItems(['{}{}'.format(k, ' (' + v + ')' if v else '') for k, v in Fix.PRIORITY.iteritems()])
 		self.CMB_status.addItems(['--'] + Fix.STATUS.values())
+		self.CMB_type.addItems(['--'] + Fix.TYPES)
 
 	def makeConnections(self):
 		self.CMB_due.currentIndexChanged.connect(self.handleDueDateChange)
 		self.CMB_priority.currentIndexChanged.connect(self.handlePriorityChange)
 		self.CMB_status.currentIndexChanged.connect(self.handleStatusChange)
+		self.CMB_type.currentIndexChanged.connect(self.handleTypeChange)
 		self.LNE_user.textChanged.connect(self.handleUserChange)
 		self.BTN_reset.clicked.connect(self.resetFilter)
 		self.TBL_fixes.doubleClicked.connect(self.openFix)
@@ -339,12 +353,14 @@ class FixView(QWidget):
 		self.CMB_status.setCurrentIndex(0)
 		self.LNE_user.setText('')
 		self.CMB_due.setCurrentIndex(0)
+		self.CMB_type.setCurrentIndex(0)
 
 		self.proxyModel.updateDue()
 		self.proxyModel.updateDepartments()
 		self.proxyModel.updateFixer()
 		self.proxyModel.updatePriority()
 		self.proxyModel.updateStatus()
+		self.proxyModel.updateType()
 
 	def handleDueDateChange(self):
 		if self.CMB_due.currentIndex() == 1:
@@ -389,6 +405,14 @@ class FixView(QWidget):
 		else:
 			self.proxyModel.updateStatus()
 
+	def handleTypeChange(self):
+		fixType = str(self.CMB_type.currentText())
+
+		if fixType != '--':
+			self.proxyModel.updateType(fixType)
+		else:
+			self.proxyModel.updateType()
+
 	def handleSidebarNav(self, current, prev):
 		if not current.isValid():
 			return
@@ -410,6 +434,7 @@ class FixSortFilterProxyModel(QSortFilterProxyModel):
 		self.priority = 0
 		self.status = None
 		self.target = None
+		self.type = None
 
 	def filterAcceptsRow(self, sourceRow, sourceParent):
 		deptIndex = self.sourceModel().index(sourceRow, FixNode.MAPPING.index('for_dept'), sourceParent)
@@ -418,6 +443,7 @@ class FixSortFilterProxyModel(QSortFilterProxyModel):
 		priorityIndex = self.sourceModel().index(sourceRow, FixNode.MAPPING.index('priority'), sourceParent)
 		statusIndex = self.sourceModel().index(sourceRow, FixNode.MAPPING.index('status'), sourceParent)
 		targetIndex = self.sourceModel().index(sourceRow, FixNode.MAPPING.index('target'), sourceParent)
+		typeIndex = self.sourceModel().index(sourceRow, FixNode.MAPPING.index('type'), sourceParent)
 
 		dept = self.sourceModel().data(deptIndex)
 		fixer = self.sourceModel().data(fixerIndex)
@@ -425,6 +451,7 @@ class FixSortFilterProxyModel(QSortFilterProxyModel):
 		priority = self.sourceModel().data(priorityIndex)
 		status = self.sourceModel().data(statusIndex)
 		target = None
+		fixType = self.sourceModel().data(typeIndex)
 
 		if targetIndex.isValid():
 			target = targetIndex.internalPointer()._fix.target
@@ -453,6 +480,9 @@ class FixSortFilterProxyModel(QSortFilterProxyModel):
 			if self.target not in parents:
 				return False
 
+		if self.type is not None and fixType != self.type:
+			return False
+
 		return True
 
 	def updateTarget(self, target=None):
@@ -465,6 +495,10 @@ class FixSortFilterProxyModel(QSortFilterProxyModel):
 		else:
 			self.departments = depts
 
+		self.invalidateFilter()
+
+	def updateType(self, fixType=None):
+		self.type = fixType
 		self.invalidateFilter()
 
 	def updateFixer(self, fixer=''):
@@ -488,7 +522,7 @@ class FixSortFilterProxyModel(QSortFilterProxyModel):
 		self.invalidateFilter()
 
 class FixViewerModel(QAbstractItemModel):
-	HEADERS = ['Number', 'Priority', 'Show', 'Requested', 'From', 'Assigned To', 'Assigned', 'Department', 'Target', 'Status', 'Due', 'Days Left', 'Bid', 'Subject']
+	HEADERS = ['Number', 'Type', 'Priority', 'Show', 'Requested', 'From', 'Assigned To', 'Assigned', 'Department', 'Target', 'Status', 'Due', 'Days Left', 'Bid', 'Subject']
 
 	def __init__(self, fixes, parent=None):
 		super(FixViewerModel, self).__init__(parent)
@@ -697,7 +731,7 @@ class SidebarNode(Node):
 		return str(ret) + ' ({})'.format(self.num)
 
 class FixNode(Node):
-	MAPPING = ['num', 'priority', 'show', 'creation', 'author', 'fixer', 'assign_date', 'for_dept', 'target', 'status', 'deadline', 'days', 'bid', 'title']
+	MAPPING = ['num', 'type', 'priority', 'show', 'creation', 'author', 'fixer', 'assign_date', 'for_dept', 'target', 'status', 'deadline', 'days', 'bid', 'title']
 
 	def __init__(self, fix):
 		self._fix = fix

@@ -6,12 +6,12 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>930</width>
+    <width>914</width>
     <height>525</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>New Fix</string>
+   <string>New Task</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
@@ -20,133 +20,24 @@
       <string>Options</string>
      </property>
      <layout class="QGridLayout" name="gridLayout">
-      <item row="2" column="4">
-       <widget class="QPushButton" name="BTN_assetBrowse">
-        <property name="enabled">
-         <bool>false</bool>
-        </property>
-        <property name="toolTip">
-         <string>Browse for a specific asset to quickly populate the fields to the left</string>
-        </property>
-        <property name="text">
-         <string>Asset browser...</string>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="1">
-       <layout class="QHBoxLayout" name="horizontalLayout_7">
-        <item>
-         <widget class="QLabel" name="label_6">
-          <property name="toolTip">
-           <string>The sequence (if any) related to the fix</string>
-          </property>
-          <property name="text">
-           <string>Sequence</string>
-          </property>
-          <property name="alignment">
-           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QComboBox" name="CMB_seq"/>
-        </item>
-       </layout>
-      </item>
-      <item row="0" column="0">
-       <layout class="QHBoxLayout" name="horizontalLayout_2">
-        <item>
-         <widget class="QLabel" name="label">
-          <property name="toolTip">
-           <string>How important is this fix?</string>
-          </property>
-          <property name="text">
-           <string>Priority</string>
-          </property>
-          <property name="alignment">
-           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QComboBox" name="CMB_priority"/>
-        </item>
-       </layout>
-      </item>
-      <item row="2" column="3">
-       <layout class="QHBoxLayout" name="horizontalLayout_9">
-        <item>
-         <widget class="QLabel" name="label_8">
-          <property name="toolTip">
-           <string>The asset (if any) related to the fix</string>
-          </property>
-          <property name="text">
-           <string>Asset</string>
-          </property>
-          <property name="alignment">
-           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QComboBox" name="CMB_asset"/>
-        </item>
-       </layout>
-      </item>
-      <item row="2" column="5">
-       <spacer name="horizontalSpacer_2">
-        <property name="orientation">
-         <enum>Qt::Horizontal</enum>
-        </property>
-        <property name="sizeHint" stdset="0">
-         <size>
-          <width>40</width>
-          <height>20</height>
-         </size>
-        </property>
-       </spacer>
-      </item>
-      <item row="1" column="0">
-       <layout class="QHBoxLayout" name="horizontalLayout_4">
-        <item>
-         <widget class="QLabel" name="label_3">
-          <property name="toolTip">
-           <string>What department is responsible for addressing this fix?</string>
-          </property>
-          <property name="text">
-           <string>Department</string>
-          </property>
-          <property name="alignment">
-           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QComboBox" name="CMB_dept"/>
-        </item>
-       </layout>
-      </item>
-      <item row="2" column="0">
-       <layout class="QHBoxLayout" name="horizontalLayout_6">
-        <item>
-         <widget class="QLabel" name="label_5">
-          <property name="toolTip">
-           <string>The show the fix is related to</string>
-          </property>
-          <property name="text">
-           <string>Show</string>
-          </property>
-          <property name="alignment">
-           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QComboBox" name="CMB_show"/>
-        </item>
-       </layout>
-      </item>
       <item row="0" column="2">
+       <layout class="QHBoxLayout" name="horizontalLayout_3">
+        <item>
+         <widget class="QLabel" name="label_2">
+          <property name="text">
+           <string>Status</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QComboBox" name="CMB_status"/>
+        </item>
+       </layout>
+      </item>
+      <item row="0" column="3">
        <layout class="QHBoxLayout" name="horizontalLayout_10">
         <item>
          <widget class="QCheckBox" name="CHK_due">
@@ -185,12 +76,28 @@
         </item>
        </layout>
       </item>
+      <item row="2" column="6">
+       <spacer name="horizontalSpacer_2">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
       <item row="0" column="1">
-       <layout class="QHBoxLayout" name="horizontalLayout_3">
+       <layout class="QHBoxLayout" name="horizontalLayout_2">
         <item>
-         <widget class="QLabel" name="label_2">
+         <widget class="QLabel" name="label">
+          <property name="toolTip">
+           <string>How important is this fix?</string>
+          </property>
           <property name="text">
-           <string>Status</string>
+           <string>Priority</string>
           </property>
           <property name="alignment">
            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -198,19 +105,32 @@
          </widget>
         </item>
         <item>
-         <widget class="QComboBox" name="CMB_status"/>
+         <widget class="QComboBox" name="CMB_priority"/>
         </item>
        </layout>
       </item>
-      <item row="2" column="2">
-       <layout class="QHBoxLayout" name="horizontalLayout_8">
+      <item row="2" column="5">
+       <widget class="QPushButton" name="BTN_assetBrowse">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
+        <property name="toolTip">
+         <string>Browse for a specific asset to quickly populate the fields to the left</string>
+        </property>
+        <property name="text">
+         <string>Asset browser...</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="0">
+       <layout class="QHBoxLayout" name="horizontalLayout_11">
         <item>
-         <widget class="QLabel" name="label_7">
+         <widget class="QLabel" name="label_9">
           <property name="toolTip">
-           <string>The shot (if any) related to the fix</string>
+           <string>The &quot;task&quot; type is handled differently in terms of reporting show progress. Open tasks are considered necessary to complete the show. Fixes are meant to be created later in the process based on review/dailies/etc.</string>
           </property>
           <property name="text">
-           <string>Shot</string>
+           <string>Type</string>
           </property>
           <property name="alignment">
            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -218,7 +138,27 @@
          </widget>
         </item>
         <item>
-         <widget class="QComboBox" name="CMB_shot"/>
+         <widget class="QComboBox" name="CMB_type"/>
+        </item>
+       </layout>
+      </item>
+      <item row="1" column="0">
+       <layout class="QHBoxLayout" name="horizontalLayout_4">
+        <item>
+         <widget class="QLabel" name="label_3">
+          <property name="toolTip">
+           <string>What department is responsible for addressing this fix?</string>
+          </property>
+          <property name="text">
+           <string>Department</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QComboBox" name="CMB_dept"/>
         </item>
        </layout>
       </item>
@@ -255,6 +195,86 @@
         </item>
        </layout>
       </item>
+      <item row="2" column="0">
+       <layout class="QHBoxLayout" name="horizontalLayout_6">
+        <item>
+         <widget class="QLabel" name="label_5">
+          <property name="toolTip">
+           <string>The show the fix is related to</string>
+          </property>
+          <property name="text">
+           <string>Show</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QComboBox" name="CMB_show"/>
+        </item>
+       </layout>
+      </item>
+      <item row="2" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_7">
+        <item>
+         <widget class="QLabel" name="label_6">
+          <property name="toolTip">
+           <string>The sequence (if any) related to the fix</string>
+          </property>
+          <property name="text">
+           <string>Sequence</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QComboBox" name="CMB_seq"/>
+        </item>
+       </layout>
+      </item>
+      <item row="2" column="2">
+       <layout class="QHBoxLayout" name="horizontalLayout_8">
+        <item>
+         <widget class="QLabel" name="label_7">
+          <property name="toolTip">
+           <string>The shot (if any) related to the fix</string>
+          </property>
+          <property name="text">
+           <string>Shot</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QComboBox" name="CMB_shot"/>
+        </item>
+       </layout>
+      </item>
+      <item row="2" column="3">
+       <layout class="QHBoxLayout" name="horizontalLayout_9">
+        <item>
+         <widget class="QLabel" name="label_8">
+          <property name="toolTip">
+           <string>The asset (if any) related to the fix</string>
+          </property>
+          <property name="text">
+           <string>Asset</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QComboBox" name="CMB_asset"/>
+        </item>
+       </layout>
+      </item>
      </layout>
     </widget>
    </item>
@@ -267,7 +287,7 @@
       <number>100</number>
      </property>
      <property name="placeholderText">
-      <string>Fix title e.g.: &quot;Character A's feet need to be planted in shot 100&quot; or &quot;Clock model needs UVs&quot; (max 100 characters)</string>
+      <string>Task title e.g.: &quot;Make Clock UVs&quot; or &quot;Character A's feet need to be planted in shot 100&quot; (max 100 characters)</string>
      </property>
     </widget>
    </item>
@@ -277,11 +297,25 @@
       <string>More details regarding the fix. Is something broken with an asset? What should be tweaked?</string>
      </property>
      <property name="plainText">
-      <string/>
+      <string>Extra info here...</string>
      </property>
      <property name="tabStopWidth">
       <number>20</number>
      </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupBox_2">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Preferred" vsizetype="MinimumExpanding">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
+     <property name="title">
+      <string>Comments</string>
+     </property>
+     <layout class="QVBoxLayout" name="LAY_comments"/>
     </widget>
    </item>
    <item>

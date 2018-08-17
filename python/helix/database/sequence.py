@@ -1,12 +1,13 @@
 import os
 
 from helix.database.elementContainer import ElementContainer
+from helix.database.mixins import FixMixin
 from helix.database.show import Show
 from helix.database.person import Person
 import helix.environment.environment as env
 from helix.utils.fileutils import SEQUENCE_FORMAT
 
-class Sequence(ElementContainer):
+class Sequence(ElementContainer, FixMixin):
 	TABLE = 'sequences'
 	PK = 'id'
 
@@ -41,9 +42,9 @@ class Sequence(ElementContainer):
 			self.author = author if author else creationInfo[0]
 			self.creation = creationInfo[1]
 
-			s = Show(self.show)
+			s = Show.fromPk(self.show)
 
-			if not s.exists():
+			if not s:
 				raise ValueError('No such show: {}'.format(show))
 			else:
 				self.work_path = os.path.join(s.work_path, self.directory)
@@ -97,6 +98,29 @@ class Sequence(ElementContainer):
 
 	def __str__(self):
 		return 'Sequence ' + str(self.num)
+
+	@property
+	def completion(self):
+		from helix.database.sql import Manager
+		from helix import Fix
+
+		with Manager(willCommit=False) as mgr:
+			query = """SELECT status, COUNT(*) FROM {} WHERE show='{}' and type='task' AND sequenceId='{}' GROUP BY status""".format(Fix.TABLE, self.show, self.id)
+			rows = mgr.connection().execute(query).fetchall()
+
+			if rows:
+				done = 0
+				total = 0
+
+				for r in rows:
+					total += r[1] # Add count for this status to total
+					if r[0] == 'done':
+						done += r[1]
+
+				return float(done) / total
+			else:
+				# No tasks at all, 0% completion. Maybe we want no tasks to mean 100% completion?
+				return 0
 
 	@property
 	def id(self):

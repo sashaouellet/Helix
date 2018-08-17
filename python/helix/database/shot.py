@@ -1,13 +1,14 @@
 import os
 
 from helix.database.elementContainer import ElementContainer
+from helix.database.mixins import FixMixin
 from helix.database.show import Show
 from helix.database.sequence import Sequence
 from helix.database.person import Person
 import helix.environment.environment as env
 from helix.utils.fileutils import SHOT_FORMAT
 
-class Shot(ElementContainer):
+class Shot(ElementContainer, FixMixin):
 	TABLE = 'shots'
 	PK = 'id'
 
@@ -58,12 +59,11 @@ class Shot(ElementContainer):
 			self.end = end
 			self.clipName = clipName
 			self.take = 0
-			self.thumbnail = None
 
-			s = Show(self.show)
+			s = Show.fromPk(self.show)
 			sq = Sequence(self.sequence, show=self.show)
 
-			if not s.exists():
+			if not s:
 				raise ValueError('No such show: {}'.format(show))
 
 			p = Person(self.author)
