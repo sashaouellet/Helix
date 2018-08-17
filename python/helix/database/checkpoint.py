@@ -66,9 +66,9 @@ class Checkpoint(DatabaseObject):
 			if not self.show:
 				raise ValueError('Tried to fallback to environment-set show, but it was null.')
 
-			s = Show(self.show)
+			s = Show.fromPk(self.show)
 
-			if not s.exists():
+			if not s:
 				raise ValueError('No such show: {}'.format(self.show))
 
 			self.status = Checkpoint.STATUS[0] # Set to N/A to begin with

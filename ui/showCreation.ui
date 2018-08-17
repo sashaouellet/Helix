@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>599</width>
-    <height>144</height>
+    <height>240</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -22,6 +22,12 @@
    </property>
    <item row="0" column="0">
     <widget class="QLabel" name="label">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
      <property name="toolTip">
       <string>The widely used &quot;internal&quot; name for the Show. The Show directory will be this. The alias is what primarily gets used when searching, and what will be visible a lot of the time. There are several restrictions including: no spaces and no special characters.</string>
      </property>
@@ -45,7 +51,57 @@
     </widget>
    </item>
    <item row="2" column="0">
+    <widget class="QLabel" name="label_3">
+     <property name="toolTip">
+      <string>This can be changed later, but changing it when assets have already been made could break things.</string>
+     </property>
+     <property name="text">
+      <string>Resolution</string>
+     </property>
+    </widget>
+   </item>
+   <item row="2" column="1">
+    <layout class="QHBoxLayout" name="horizontalLayout_2">
+     <item>
+      <widget class="QSpinBox" name="SPN_resolutionX">
+       <property name="maximum">
+        <number>999999999</number>
+       </property>
+       <property name="value">
+        <number>1280</number>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QSpinBox" name="SPN_resolutionY">
+       <property name="maximum">
+        <number>999999999</number>
+       </property>
+       <property name="value">
+        <number>720</number>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item row="3" column="0">
+    <widget class="QLabel" name="label_6">
+     <property name="toolTip">
+      <string>This can be changed later, but changing it when assets have already been made could break things.</string>
+     </property>
+     <property name="text">
+      <string>FPS</string>
+     </property>
+    </widget>
+   </item>
+   <item row="4" column="0">
     <widget class="QLabel" name="label_2">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
      <property name="toolTip">
       <string>The &quot;pretty&quot; name for general display purposes. This can contain spaces and special characters.</string>
      </property>
@@ -54,10 +110,10 @@
      </property>
     </widget>
    </item>
-   <item row="2" column="1">
+   <item row="4" column="1">
     <widget class="QLineEdit" name="LNE_name"/>
    </item>
-   <item row="3" column="1">
+   <item row="5" column="1">
     <layout class="QHBoxLayout" name="horizontalLayout">
      <item>
       <spacer name="horizontalSpacer">
@@ -87,6 +143,19 @@
       </widget>
      </item>
     </layout>
+   </item>
+   <item row="3" column="1">
+    <widget class="QDoubleSpinBox" name="SPN_fps">
+     <property name="decimals">
+      <number>3</number>
+     </property>
+     <property name="maximum">
+      <double>999.000000000000000</double>
+     </property>
+     <property name="value">
+      <double>24.000000000000000</double>
+     </property>
+    </widget>
    </item>
   </layout>
  </widget>

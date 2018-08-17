@@ -9,21 +9,24 @@
 import os
 
 from helix.database.elementContainer import ElementContainer
+from helix.database.mixins import FixMixin
 from helix.database.person import Person
 import helix.environment.environment as env
 import helix.utils.utils as utils
 
-class Show(ElementContainer):
+class Show(ElementContainer, FixMixin):
 	TABLE='shows'
 	PK='alias'
 
-	def __init__(self, alias, name=None, author=None, makeDirs=False, dummy=False):
+	def __init__(self, alias, resolution, fps, name=None, author=None, makeDirs=False, dummy=False):
 		"""Construct a new show. Based on the given parameter values, this
 		may equate to a show that already exists in the DB, or will construct
 		an entirely new instance.
-		
+
 		Args:
 		    alias (str): The alias (internal name) of the show
+		    resolution (tuple): The image resolution for the show
+		    fps (float): The frames per second that the show will follow
 		    name (str, optional): The long, descriptive name
 		    author (str, optional): The creator of the show, defaults to the
 		    	current user
@@ -32,7 +35,7 @@ class Show(ElementContainer):
 		    dummy (bool, optional): Whether this is a throwaway instance or not.
 		    	Dummy instances are meant to be "unmapped" into since they will
 		    	have no attributes set.
-		
+
 		Raises:
 		    ValueError: If the alias specified does not meet the sanitation criteria,
 		    	or if the given user (if any provided) does not exist in the database
@@ -59,6 +62,13 @@ class Show(ElementContainer):
 			self._exists = True
 		else:
 			self._exists = False
+
+			if not isinstance(resolution, tuple) or len(resolution) != 2:
+				raise ValueError('Invalid resolution specified, must be a length 2 tuple representing the width and height values')
+
+			self.resolution_x = resolution[0]
+			self.resolution_y = resolution[1]
+			self.fps = fps
 			self.name = name
 
 			creationInfo = env.getCreationInfo(format=False)
@@ -147,6 +157,10 @@ class Show(ElementContainer):
 		return self.alias
 
 	@property
+	def resolution(self):
+		return (self.resolution_x, self.resolution_y)
+
+	@property
 	def directory(self):
 		return self.alias
 
@@ -160,4 +174,4 @@ class Show(ElementContainer):
 
 	@staticmethod
 	def dummy():
-		return Show('', dummy=True)
+		return Show(None, None, None, dummy=True)
