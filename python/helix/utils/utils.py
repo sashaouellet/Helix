@@ -14,6 +14,41 @@ def prettyDate(dbTime):
 
 	return dt.strftime('%x')
 
+def relativeDate(dbTime):
+	dt = dbTimetoDt(dbTime)
+	now = datetime.now()
+	diff = now - dt
+	seconds = diff.total_seconds()
+	minutes = seconds / 60
+	hours = seconds / 3600
+	days = seconds / 86400
+	weeks = seconds / 604800
+	months = seconds / 2592000
+	years = seconds / 31104000
+
+	if seconds < 1:
+		return '< 1 second ago'
+	elif minutes < 1:
+		return '{} seconds ago'.format(seconds)
+	elif hours < 1:
+		num = int(round(minutes))
+		return '{} {} ago'.format(num, 'minutes' if num > 1 else 'minute')
+	elif days < 1:
+		num = int(round(hours))
+		return '{} {} ago'.format(num, 'hours' if num > 1 else 'hour')
+	elif months < 1:
+		if weeks < 1:
+			num = int(round(days))
+			return '{} {} ago'.format(num, 'days' if num > 1 else 'day')
+		else:
+			return '{} {} ago'.format(int(round(weeks)), 'weeks' if num > 1 else 'week')
+	elif diff.year < 1:
+		num = int(round(months))
+		return '{} {} ago'.format(num, 'months' if num > 1 else 'month')
+	else:
+		num = int(round(years))
+		return '{} {} ago'.format(num, 'years' if num > 1 else 'year')
+
 def utcToLocal(utcDT):
 	"""Converts the given datetime object (naive, UTC) into a datetime object
 	for the current timezone.
