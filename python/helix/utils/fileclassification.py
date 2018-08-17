@@ -8,7 +8,7 @@ __date__ = 11/27/17
 import os, re, shutil
 
 class FrameSequence():
-	FRAME_NAME_PATTERN = r'^(?P<prefix>{})(?P<framePadding>[\.\-_]\d+)\.(?P<ext>{})$'
+	FRAME_NAME_PATTERN = r'^(?P<prefix>{})(?P<framePadding>[\.\-_]\d+|[\.\-_]#+)\.(?P<ext>{})$'
 	STANDARD_FRAME_FORMAT = '#'
 	HOUDINI_FRAME_FORMAT = '$F'
 	GLOB_FORMAT = '[0-9]'
@@ -347,7 +347,7 @@ class FrameSequence():
 		last = None
 
 		for f in frames:
-			if not currRangeStart: # First frame of streak
+			if currRangeStart is None: # First frame of streak
 				currRangeStart = f
 				last = f
 
