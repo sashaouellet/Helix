@@ -22,10 +22,10 @@ elif sys.platform == 'darwin':
 def setEnvironment(var, value):
 	os.environ[VAR_PREFIX + var.upper()] = value
 
-def getEnvironment(var):
+def getEnvironment(var, silent=False):
 	env = os.environ.get(VAR_PREFIX + var.upper())
 
-	if not env:
+	if not env and not silent:
 		raise EnvironmentError('Variable {} not set'.format(var))
 
 	return env
@@ -43,21 +43,41 @@ def getAllEnv():
 	return ret
 
 def getShow():
-	show = getEnvironment('show')
+	show = getEnvironment('show', silent=True)
 
 	if show:
-		from helix.database.show import Show
+		from helix import Show
 		return Show.fromPk(show)
 
+def getSequence():
+	seq = getEnvironment('sequence', silent=True)
+
+	if seq:
+		from helix import Sequence
+		return Sequence.fromPk(seq)
+
+def getShot():
+	shot = getEnvironment('shot', silent=True)
+
+	if shot:
+		from helix import Shot
+		return Shot.fromPk(shot)
+
 def getWorkingElement():
-	element = getEnvironment('element')
+	element = getEnvironment('element', silent=True)
 
 	if element:
-		from helix.database.element import Element
+		from helix import Element
 		return Element.fromPk(element)
 
+def setWorkingElement(element):
+	setEnvironment('element', element.id)
+	setEnvironment('show', element.show)
+	setEnvironment('sequence', element.sequenceId)
+	setEnvironment('shot', element.shotId)
+
 def getDept():
-	from helix.database.person import Person
+	from helix import Person
 	person = Person.fromPk(USER)
 
 	if person is not None:

@@ -1,7 +1,8 @@
 import subprocess
 import sys
+import os
 
-import helix.environment.environment as hxenv
+import helix
 
 class DCCPackage(object):
 	def __init__(self, name, version=None):
@@ -15,25 +16,48 @@ class DCCPackage(object):
 	@property
 	def executable(self):
 		try:
-			return hxenv.cfg.config.get('Executables-{}'.format(hxenv.OS), self.fullName)
+			return helix.hxenv.cfg.config.get('Executables-{}'.format(helix.hxenv.OS), self.fullName)
 		except:
-			raise ValueError('{} has not been configured for your OS: {}'.format(self.fullName, hxenv.OS))
+			raise ValueError('{} has not been configured for your OS: {}'.format(self.fullName, helix.hxenv.OS))
 
 	def run(self, args=[], env={}):
-		# Inject our python path for the process
-		hxPython = hxenv.getEnvironment('python')
-		pythonPath = env.get('PYTHONPATH', '')
+		for e, val in os.environ.iteritems():
+			if e in env:
+				env[e] += os.pathsep + val
+			else:
+				env[e] = val
 
-		if hxPython not in pythonPath:
-			pythonPath += ';%s' % hxPython
-			pythonPath = pythonPath.lstrip(';')
+		# Also add all of our env vars, this will stomp any globals set
+		env.update(helix.hxenv.getAllEnv())
 
-		env['PYTHONPATH'] = pythonPath
-
-		# Also add all of our env vars
-		env.update(hxenv.getAllEnv())
+		# Anything the DCC package defines/overrides as needed for the process environment
+		env.update(self.env())
 
 		# Kick it!
-		p = subprocess.Popen([self.executable] + args, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		p = subprocess.Popen([self.executable] + args, env=env)
 
 		return p
+
+	@staticmethod
+	def startup():
+		pass
+
+	@staticmethod
+	def guiStartup():
+		pass
+
+	@staticmethod
+	def setResolution():
+		raise NotImplementedError()
+
+	@staticmethod
+	def setFPS():
+		raise NotImplementedError()
+
+	@staticmethod
+	def setFrameRange():
+		raise NotImplementedError()
+
+	def env(self):
+		return {}
+

@@ -68,3 +68,7 @@ def connect(nodeFrom, nodeTo, inputNum=0):
 
     nodeTo.setInput(inputNum, nodeFrom)
     return nodeTo
+
+def setRootKnobValue(name, val):
+	nuke.knobDefault('Root.' + name, str(val))
+	nuke.Root().knob(name).setValue(val)
