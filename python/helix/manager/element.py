@@ -1,10 +1,17 @@
-from PyQt4.QtCore import *
-from PyQt4.QtGui import *
-from PyQt4 import uic
+try:
+	from PySide2.QtWidgets import *
+	from PySide2.QtCore import *
+	pyqtSignal = Signal
+except ImportError:
+	from PyQt4.QtCore import *
+	from PyQt4.QtGui import *
 
 from helix.utils.qtutils import Node
+from helix.utils.fileclassification import FrameSequence
 import helix.utils.utils as utils
+import helix.environment.environment as env
 import helix
+from helix import Show, Element
 
 import os
 
@@ -20,7 +27,16 @@ class ElementNode(Node):
 
 	def data(self, col):
 		if col >= 0 and col < len(ElementNode.MAPPING):
-			return getattr(self._element, ElementNode.MAPPING[col])
+			val = getattr(self._element, ElementNode.MAPPING[col])
+
+			if ElementNode.MAPPING[col] == 'creation':
+				return utils.prettyDate(val)
+			else:
+				return val
+
+	@property
+	def element(self):
+		return self._element
 
 class ElementSortFilterProxyModel(QSortFilterProxyModel):
 	def __init__(self, parent=None):
@@ -89,20 +105,46 @@ class ElementPickerModel(QAbstractItemModel):
 			if section >= 0 and section < len(ElementPickerModel.HEADERS):
 				return ElementPickerModel.HEADERS[section]
 		elif orientation == Qt.Vertical:
-			return QVariant()
+			return None
 
 		return super(ElementPickerModel, self).headerData(section, orientation, role=role)
 
 	def data(self, index, role=Qt.DisplayRole):
 		if not index.isValid():
-			return QVariant()
+			return None
 
 		node = index.internalPointer()
 
 		if node and role == Qt.DisplayRole:
 			return str(node.data(index.column()))
 
-		return QVariant()
+		return None
+
+	def supportedDropActions(self):
+	    return Qt.CopyAction
+
+	def mimeData(self, indexes):
+		if len(indexes) == 0:
+			return None
+
+		data = QMimeData()
+		for idx in indexes:
+			el = idx.internalPointer()._element
+			lastPub = el.getLatestPublishedFile()
+
+			if lastPub and lastPub.versionless_path:
+				fs = FrameSequence(lastPub.versionless_path)
+
+				if fs.isValid():
+					data.setText('{} {}-{}'.format(lastPub.versionless_path, fs.first(), fs.last()))
+				else:
+					data.setText(lastPub.versionless_path)
+
+		return data
+
+	def flags(self, index):
+		default = super(ElementPickerModel, self).flags(index)
+		return Qt.ItemIsDragEnabled | default
 
 	def addChild(self, node, parent):
 		if not parent or not parent.isValid():
@@ -144,13 +186,15 @@ class PickMode():
 	MULTI = 1
 
 class ElementViewWidget(QWidget):
-	def __init__(self, elements=[], mode=PickMode.SINGLE, parent=None):
-		super(QWidget, self).__init__(parent)
+	elementDoubleClicked = pyqtSignal(Element)
+
+	def __init__(self, elements=[], mode=PickMode.SINGLE, parent=None, forcePublished=False):
+		super(ElementViewWidget, self).__init__(parent)
 
 		self.mode = mode
 		self.elements = elements
 
-		self.buildUI()
+		self.buildUI(forcePublished)
 
 	def asDockable(self):
 		qdock = QDockWidget('Global Asset Viewer', self.parent())
@@ -160,8 +204,9 @@ class ElementViewWidget(QWidget):
 
 	def setElements(self, elements):
 		self.model.setElements(elements)
+		self.setupSearchCompleter()
 
-	def buildUI(self):
+	def buildUI(self, forcePublished):
 		self.proxyModel = ElementSortFilterProxyModel()
 		self.model = ElementPickerModel(self.elements)
 		self.elementsView = QTableView(self)
@@ -183,12 +228,25 @@ class ElementViewWidget(QWidget):
 
 		self.elementsView.setSelectionBehavior(QAbstractItemView.SelectRows)
 		self.elementsView.setSortingEnabled(True)
+		self.elementsView.setDragEnabled(True)
+		self.elementsView.setAcceptDrops(True)
+		self.elementsView.setDropIndicatorShown(True)
+		self.elementsView.setDragDropMode(QAbstractItemView.DragOnly)
 
 		# Header stuff...
 		hHeader = QHeaderView(Qt.Horizontal)
 
-		hHeader.setClickable(True)
-		hHeader.setResizeMode(QHeaderView.Stretch)
+		# Check out this hack way of supporting PySide2 and PyQt4
+		if hasattr(hHeader, 'setClickable'):
+			hHeader.setClickable(True)
+		elif hasattr(hHeader, 'setSectionsClickable'):
+			hHeader.setSectionsClickable(True)
+
+		if hasattr(hHeader, 'setResizeMode'):
+			hHeader.setResizeMode(QHeaderView.Stretch)
+		elif hasattr(hHeader, 'setSectionResizeMode'):
+			hHeader.setSectionResizeMode(QHeaderView.Stretch)
+
 		hHeader.setSortIndicatorShown(True)
 		self.elementsView.setHorizontalHeader(hHeader)
 
@@ -212,7 +270,14 @@ class ElementViewWidget(QWidget):
 
 		self.publishedOnlyFilter = QCheckBox('Published Only')
 		self.publishedOnlyFilter.stateChanged.connect(self.handlePublishFilter)
+
+		if forcePublished:
+			self.publishedOnlyFilter.setChecked(True)
+			self.publishedOnlyFilter.setDisabled(True)
+
 		self.filterLayout.addWidget(self.publishedOnlyFilter, 1, 1)
+
+		self.elementsView.doubleClicked.connect(self.handleDoubleClick)
 
 		self.filterGroup.setAlignment(Qt.AlignLeft)
 		self.filterGroup.setLayout(self.filterLayout)
@@ -225,6 +290,18 @@ class ElementViewWidget(QWidget):
 		self.setLayout(self.mainLayout)
 
 	# Slots
+	def handleDoubleClick(self, index):
+		if not index or not index.isValid():
+			return
+
+		# We only want to provide double click functionality for asset selection in single picker mode
+		if self.mode != PickMode.SINGLE:
+			return
+
+		el = self.proxyModel.mapToSource(index).internalPointer().element
+
+		self.elementDoubleClicked.emit(el)
+
 	def handleUserFilter(self, state):
 		if state == Qt.Checked:
 			import getpass
@@ -287,24 +364,28 @@ class ElementViewWidget(QWidget):
 		super(ElementViewWidget, self).keyPressEvent(event)
 
 class ElementPickerDialog(QDialog):
-	def __init__(self, elements, mode=PickMode.SINGLE, parent=None):
+	def __init__(self, elements=None, mode=PickMode.SINGLE, parent=None, forcePublished=False, okButtonLabel='OK'):
 		super(ElementPickerDialog, self).__init__(parent)
 
 		self.selected = []
 
 		self.mainLayout = QVBoxLayout()
 		self.buttonLayout = QHBoxLayout()
-		self.okButton = QPushButton('OK')
+		self.okButton = QPushButton(okButtonLabel)
 		self.cancelButton = QPushButton('Cancel')
 
 		self.buttonLayout.insertStretch(0)
 		self.buttonLayout.addWidget(self.cancelButton)
 		self.buttonLayout.addWidget(self.okButton)
 
-		self.elementViewerWidget = ElementViewWidget(elements, mode=mode, parent=self)
+		if not elements:
+			elements = Show.fromPk(env.getEnvironment('show')).getElements()
+
+		self.elementViewerWidget = ElementViewWidget(elements, mode=mode, parent=self, forcePublished=forcePublished)
 
 		self.mainLayout.addWidget(self.elementViewerWidget)
 		self.mainLayout.addLayout(self.buttonLayout)
+		self.setMouseTracking(True)
 
 		self.setWindowTitle('Asset Browser')
 		self.setLayout(self.mainLayout)
@@ -325,7 +406,12 @@ class ElementPickerDialog(QDialog):
 		if not self.selected:
 			return
 
+		print self.selected[0]
+
 		super(ElementPickerDialog, self).accept()
+
+	def mousePressEvent(self, event):
+		print 'foobar'
 
 	def reject(self):
 		self.elementViewerWidget.elementsView.selectionModel().clearSelection()
@@ -336,3 +422,5 @@ class ElementPickerDialog(QDialog):
 	def makeConnections(self):
 		self.okButton.clicked.connect(self.accept)
 		self.cancelButton.clicked.connect(self.reject)
+		self.elementViewerWidget.elementDoubleClicked.connect(self.accept)
+
