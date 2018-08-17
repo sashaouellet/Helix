@@ -2,11 +2,7 @@ import os, sys
 from datetime import datetime
 
 import helix
-from helix.database.show import Show
-from helix.database.sequence import Sequence
-from helix.database.shot import Shot
-from helix.database.element import Element
-from helix.database.checkpoint import Checkpoint
+from helix import Show, Sequence, Shot, Element, Checkpoint
 import helix.database.database as db
 import helix.api.commands as hxcmds
 import helix.environment.environment as env
@@ -26,6 +22,8 @@ import qdarkstyle
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 from PyQt4 import uic
+
+console = None
 
 class HierarchyView(QTreeView):
 	def __init__(self, parent, canDeselect=True, right=None):
@@ -172,7 +170,6 @@ class ShotModel(HierarchyModel):
 				if thumbnail:
 					return thumbnail
 				elif data.thumbnail:
-					print 'DB query'
 					thumbnail = data.thumbnail
 					pixmap = QPixmap(thumbnail)
 					pixmap = pixmap.scaledToWidth(300)
@@ -449,9 +446,11 @@ class PublishDialog(QDialog):
 			if force:
 				cmd.append('--force')
 
-			self.parent().console.injectGetElement(self.element)
-			self.parent().console.inject(cmd)
+			console.injectGetElement(self.element)
+			console.inject(cmd)
 		except Exception as e:
+			import traceback
+			print traceback.format_exc()
 			ExceptionDialog(e, parent=self).exec_()
 
 		super(PublishDialog, self).accept()
@@ -485,21 +484,27 @@ class NewShowDialog(QDialog):
 			)
 
 	def accept(self):
-		alias, name = self.getInputs()
+		alias, resX, resY, fps, name = self.getInputs()
 
-		cmd = ['mkshow', alias]
+		cmd = ['mkshow', alias, str(resX), str(resY), str(fps)]
 
 		if name:
 			cmd.extend(['--name', '"{}"'.format(name)])
 
-		result = self.parent().console.inject(cmd)
+		result = console.inject(cmd)
 
 		if result:
 			self.parent().handleDBReload()
 			super(NewShowDialog, self).accept()
 
 	def getInputs(self):
-		return (str(self.LNE_alias.text()).strip(), str(self.LNE_name.text()).strip())
+		return (
+			str(self.LNE_alias.text()).strip(),
+			int(self.SPN_resolutionX.value()),
+			int(self.SPN_resolutionY.value()),
+			float(self.SPN_fps.value()),
+			str(self.LNE_name.text()).strip()
+		)
 
 class NewSequenceDialog(QDialog):
 	def __init__(self, parent, show):
@@ -528,9 +533,9 @@ class NewSequenceDialog(QDialog):
 	def accept(self):
 		seqNum = int(self.SPN_num.value())
 
-		self.parent().console.inject(['pop', self._show])
+		console.inject(['pop', self._show])
 
-		result = self.parent().console.inject(['mkseq', str(seqNum)])
+		result = console.inject(['mkseq', str(seqNum)])
 
 		if result:
 			self.parent().handleDBReload()
@@ -611,9 +616,9 @@ class NewShotDialog(QDialog):
 
 		cmd.extend(['--checkpoints', '"' + ','.join(stages) + '"'])
 
-		self.parent().console.inject(['pop', self._show])
+		console.inject(['pop', self._show])
 
-		result = self.parent().console.inject(cmd)
+		result = console.inject(cmd)
 
 		if result:
 			self.parent().handleDBReload()
@@ -694,9 +699,9 @@ class NewElementDialog(QDialog):
 		if clip:
 			cmd.extend(['-c', clip])
 
-		self.parent().console.inject(['pop', self._show.alias])
+		console.inject(['pop', self._show.alias])
 
-		result = self.parent().console.inject(cmd)
+		result = console.inject(cmd)
 
 		if result:
 			self.parent().handleDBReload()
@@ -735,8 +740,8 @@ class RollbackDialog(QDialog):
 		try:
 			cmd = ['roll', '-v', str(rollbackVer)]
 
-			self.parent().console.injectGetElement(self._element)
-			self.parent().console.inject(cmd)
+			console.injectGetElement(self._element)
+			console.inject(cmd)
 
 			super(RollbackDialog, self).accept()
 		except Exception, e:
@@ -918,7 +923,7 @@ class ImportElementDialog(QDialog):
 
 	def populateSeqAndShot(self):
 		self.CMB_seq.clear()
-		self._show = Show(str(self.CMB_show.currentText()))
+		self._show = Show.fromPk(str(self.CMB_show.currentText()))
 		seqs = [str(s.num) for s in self._show.getSequences()]
 
 		self.CMB_seq.addItems(['--'] + sorted(seqs, key=lambda s: int(s)))
@@ -940,7 +945,7 @@ class ImportElementDialog(QDialog):
 		elif self.RDO_skip.isChecked():
 			overwriteOption = 2
 
-		self.parent().console.inject(['pop', show])
+		console.inject(['pop', show])
 
 		cmd = [
 			'import',
@@ -961,7 +966,7 @@ class ImportElementDialog(QDialog):
 
 		cmd.extend([assetDir, assetType])
 
-		self.parent().console.inject(cmd)
+		console.inject(cmd)
 
 		super(ImportElementDialog, self).accept()
 
@@ -1046,7 +1051,7 @@ class ExportDialog(QDialog):
 
 				cmd.extend([self.folderLayout.getFile(), el.show, el.type])
 
-				self.parent().console.inject(cmd)
+				console.inject(cmd)
 				op.tick()
 
 		super(ExportDialog, self).accept()
@@ -1071,7 +1076,7 @@ class FindDialog(QDialog):
 			self.strOption = 2
 
 		self.elType = None if self.CMB_type.currentText() == 'any' else str(self.CMB_type.currentText())
-		self._show = Show(str(self.CMB_show.currentText()))
+		self._show = Show.fromPk(str(self.CMB_show.currentText()))
 		self.seq = None if self.CMB_seq.currentText() == 'any' else str(self.CMB_seq.currentText())
 		self.shot = None if self.CMB_shot.currentText() == 'any' else str(self.CMB_shot.currentText())
 
@@ -1122,7 +1127,7 @@ class FindDialog(QDialog):
 
 	def populateSeqAndShot(self):
 		self.CMB_seq.clear()
-		self._show = Show(str(self.CMB_show.currentText()))
+		self._show = Show.fromPk(str(self.CMB_show.currentText()))
 
 		seqs = [str(s.num) for s in self._show.getSequences()]
 
@@ -1222,12 +1227,14 @@ class ManagerWindow(QMainWindow):
 		self.elTypeFilter = Element.ELEMENT_TYPES
 
 		# == START dock widgets ==
-		self.console = Console(self)
-		self.console.setObjectName('Console')
-		self.addDockWidget(Qt.RightDockWidgetArea, self.console)
+		global console
+		console = Console(self)
+		console.setObjectName('Console')
+		self.addDockWidget(Qt.RightDockWidgetArea, console)
 
 		self.globalElViewer = ElementViewWidget(parent=self).asDockable()
 		self.globalElViewer.setObjectName('GlobalElements')
+		self.addDockWidget(Qt.BottomDockWidgetArea, self.globalElViewer)
 
 		self.elementList = BasicElementView(parent=self)
 		self.elListDock = self.elementList.asDockable()
@@ -1280,7 +1287,7 @@ class ManagerWindow(QMainWindow):
 	def restoreFactorySettings(self):
 		self.mainDock.show()
 		self.elListDock.show()
-		self.console.hide()
+		console.hide()
 		self.globalElViewer.hide()
 
 		self.addDockWidget(Qt.TopDockWidgetArea, self.mainDock)
@@ -1427,8 +1434,8 @@ class ManagerWindow(QMainWindow):
 		self.mainDock.hide()
 		self.elListDock.hide()
 		self.globalElViewer.hide()
-		self.console.setWindowState(Qt.WindowMaximized)
-		self.console.show()
+		console.setWindowState(Qt.WindowMaximized)
+		console.show()
 
 	def toggleHierarchy(self):
 		if self.ACT_hierarchy.isChecked():
@@ -1450,9 +1457,9 @@ class ManagerWindow(QMainWindow):
 
 	def toggleConsole(self):
 		if self.ACT_console.isChecked():
-			self.console.show()
+			console.show()
 		else:
-			self.console.hide()
+			console.hide()
 
 	def handleConfigEditor(self, tabIndex):
 		dialog = ConfigEditorDialog(self)
@@ -1706,9 +1713,14 @@ class ManagerWindow(QMainWindow):
 
 		container = idx.internalPointer().data(0)
 
+		ret = console.inject(['pop', '"{}"'.format(container.alias)])
+
+		if not ret:
+			QApplication.instance().restoreOverrideCursor()
+			return
+
 		self.seqModel.setSequences(container.getSequences())
 		self.shotModel.setShots(None)
-		self.console.inject(['pop', '"{}"'.format(container.alias)])
 
 		if self.globalElViewer:
 			self.globalElViewer.widget().setElements(container.getElements())
@@ -1772,7 +1784,7 @@ class ManagerWindow(QMainWindow):
 
 	def handleDBReload(self):
 		QCoreApplication.instance().setOverrideCursor(QCursor(Qt.WaitCursor))
-		self.showModels.setShows(db.getShows())
+		self.showModel.setShows(db.getShows())
 
 		indexes = self.showModel.getShowIndexes()
 
@@ -1920,7 +1932,7 @@ if __name__ == '__main__':
 		QThread.sleep(4)
 		splash.finish(window)
 
-	window.setWindowIcon(QIcon(os.path.join(helix.root, 'ui', 'helix.icns')))
+	window.setWindowIcon(QIcon(os.path.join(helix.root, 'ui', 'icon.png')))
 	window.show()
 	window.setWindowState(window.windowState() & Qt.WindowMinimized | Qt.WindowActive)
 	window.raise_()
