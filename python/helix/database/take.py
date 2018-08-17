@@ -30,9 +30,9 @@ class Take(DatabaseObject):
 		if not self.show:
 			raise ValueError('Tried to fallback to environment-set show, but it was null.')
 
-		s = Show(self.show)
+		s = Show.fromPk(self.show)
 
-		if not s.exists():
+		if not s:
 			raise ValueError('No such show: {}'.format(show))
 
 		if self.sequence is not None:
