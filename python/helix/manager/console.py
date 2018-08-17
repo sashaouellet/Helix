@@ -54,18 +54,18 @@ class Console(QDockWidget):
 		seq = element.sequence
 		shot = element.shot
 
-		if name is None:
+		if name.startswith('_'):
 			name = '-'
 
 		cmd = ['get', elType, name]
 
 		if seq:
 			cmd.append('-sq')
-			cmd.append(seq)
+			cmd.append(str(seq))
 
 		if shot:
 			cmd.append('-s')
-			cmd.append(shot)
+			cmd.append(str(shot))
 
 		return self.inject(cmd)
 
