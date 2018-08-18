@@ -1,10 +1,12 @@
 try:
 	from PySide2.QtWidgets import *
 	from PySide2.QtCore import *
+	from helix.utils.pysideUtils import UiLoader
 	pyqtSignal = Signal
 except ImportError:
 	from PyQt4.QtCore import *
 	from PyQt4.QtGui import *
+	from PyQt4 import uic
 
 from helix.utils.qtutils import Node
 from helix.utils.fileclassification import FrameSequence
@@ -14,6 +16,7 @@ import helix
 from helix import Show, Element
 
 import os
+import collections
 
 class ElementNode(Node):
 	MAPPING = ['name', 'type', 'version', 'parent', 'author', 'creation', 'pubVersion']
@@ -45,14 +48,30 @@ class ElementSortFilterProxyModel(QSortFilterProxyModel):
 		self.elFilters = helix.database.element.Element.ELEMENT_TYPES
 		self.onlyPublished = False
 		self.userFilter = '*'
+		self.name = None
 
 	def filterAcceptsRow(self, sourceRow, sourceParent):
 		typeIndex = self.sourceModel().index(sourceRow, ElementNode.MAPPING.index('type'), sourceParent)
 		publishedIndex = self.sourceModel().index(sourceRow, ElementNode.MAPPING.index('pubVersion'), sourceParent)
 		authorIndex = self.sourceModel().index(sourceRow, ElementNode.MAPPING.index('author'), sourceParent)
-		publishCond = (self.onlyPublished and int(self.sourceModel().data(publishedIndex)) != 0) or not self.onlyPublished
+		nameIndex = self.sourceModel().index(sourceRow, ElementNode.MAPPING.index('name'), sourceParent)
 
-		return self.sourceModel().data(typeIndex) in self.elFilters and publishCond and (self.sourceModel().data(authorIndex) == self.userFilter or self.userFilter == '*')
+		elType = self.sourceModel().data(typeIndex)
+		if elType not in self.elFilters:
+			return False
+
+		if self.onlyPublished and int(self.sourceModel().data(publishedIndex)) == 0:
+			return False
+
+		author = self.sourceModel().data(authorIndex)
+		if self.userFilter != '*' and author != self.userFilter:
+			return False
+
+		name = self.sourceModel().data(nameIndex)
+		if self.name is not None and self.name.lower() not in name.lower():
+			return False
+
+		return True
 
 	def updateUserFilter(self, user=None):
 		if user:
@@ -68,6 +87,10 @@ class ElementSortFilterProxyModel(QSortFilterProxyModel):
 
 	def updateElFilter(self, newEls):
 		self.elFilters = newEls
+		self.invalidateFilter()
+
+	def updateNameFilter(self, name=None):
+		self.name = name
 		self.invalidateFilter()
 
 class ElementPickerModel(QAbstractItemModel):
@@ -94,7 +117,7 @@ class ElementPickerModel(QAbstractItemModel):
 
 		return self._root.columnCount()
 
-	def rowCount(self, index):
+	def rowCount(self, index=QModelIndex()):
 		if index.isValid():
 			return index.internalPointer().childCount()
 
@@ -406,12 +429,7 @@ class ElementPickerDialog(QDialog):
 		if not self.selected:
 			return
 
-		print self.selected[0]
-
 		super(ElementPickerDialog, self).accept()
-
-	def mousePressEvent(self, event):
-		print 'foobar'
 
 	def reject(self):
 		self.elementViewerWidget.elementsView.selectionModel().clearSelection()
@@ -424,3 +442,110 @@ class ElementPickerDialog(QDialog):
 		self.cancelButton.clicked.connect(self.reject)
 		self.elementViewerWidget.elementDoubleClicked.connect(self.accept)
 
+class PublishedAssetBrowser(QDialog):
+	def __init__(self, container, parent=None):
+		super(PublishedAssetBrowser, self).__init__(parent)
+
+		# TODO: probably want to move into qtUtils..
+		if 'uic' in globals():
+			uic.loadUi(os.path.join(helix.root, 'ui', 'publishBrowser.ui'), self)
+		else:
+			loader = UiLoader(self)
+			loader.load(QFile(os.path.join(helix.root, 'ui', 'publishBrowser.ui')))
+
+		self.container = container
+		self.pfMapping = collections.OrderedDict()
+		self.selectedPf = None
+
+		from helix import ElementContainer
+		if not isinstance(container, ElementContainer):
+			raise ValueError('Container must be of type ElementContainer. Got: {}'.format(container.__class__.__name__))
+
+		self.model = ElementPickerModel([e for e in self.container.getElements() if e.pubVersion != 0], self)
+		self.proxyModel = ElementSortFilterProxyModel(parent=self)
+
+		self.initUI()
+		self.makeConnections()
+
+	def initUI(self):
+		self.CHK_limitScope.setText('Limit to assets in {}'.format(str(self.container)))
+		self.populatePfTypes()
+
+		self.proxyModel.setSourceModel(self.model)
+		self.TREE_assets.setModel(self.proxyModel)
+		self.TREE_assets.setSelectionModel(QItemSelectionModel(self.proxyModel))
+		# self.proxyModel.updatePublishFilter(onlyPublished=True)
+
+	def makeConnections(self):
+		self.BTN_import.clicked.connect(self.accept)
+		self.BTN_cancel.clicked.connect(self.reject)
+		self.CHK_limitScope.clicked.connect(self.handleLimitAssetScope)
+		self.CMB_pfFileType.currentIndexChanged.connect(self.handlePfTypeChosen)
+		self.CMB_versions.currentIndexChanged.connect(self.handlePfChosen)
+		self.LNE_search.textEdited.connect(self.handleFilter)
+		self.TREE_assets.selectionModel().currentChanged.connect(self.handleAssetSelected)
+
+		self.setupSearchCompleter()
+
+	def populatePfTypes(self):
+		self.CMB_pfFileType.clear()
+		self.CMB_pfFileType.addItems(['--'] + self.getPublishedFileTypes())
+
+	def getPublishedFileTypes(self):
+		return []
+
+	def handleFilter(self):
+		self.proxyModel.updateNameFilter(str(self.LNE_search.text()))
+
+	def handleAssetSelected(self, current, previous):
+		self.CMB_versions.clear()
+		self.pfMapping = collections.OrderedDict()
+
+		if not current or not current.isValid():
+			self.BTN_import.setEnabled(False)
+			return
+
+		el = self.proxyModel.mapToSource(current).internalPointer()._element
+		versions = sorted(el.getPublishedFiles(), reverse=True, key=lambda pf: pf.version)
+
+		for pf in versions:
+			self.pfMapping['Version {} ({})'.format(pf.version, utils.prettyDate(pf.creation))] = pf
+
+		self.CMB_versions.addItems(self.pfMapping.keys())
+		self.BTN_import.setEnabled(True)
+
+	def handlePfChosen(self):
+		self.selectedPf = self.pfMapping.get(str(self.CMB_versions.currentText()))
+
+	def handleLimitAssetScope(self):
+		if self.CHK_limitScope.isChecked():
+			# Just this scope's elements (the container)
+			self.model.setElements([e for e in self.container.getElements() if e.pubVersion != 0])
+		else:
+			# Set to show wide elements
+			self.model.setElements([e for e in Show.fromPk(self.container.show).getElements() if e.pubVersion != 0])
+
+		self.populatePfTypes()
+		self.setupSearchCompleter()
+		self.handleAssetSelected(QModelIndex(), QModelIndex())
+
+	def reject(self):
+		self.selectedPf = None
+		super(PublishedAssetBrowser, self).reject()
+
+	def handlePfTypeChosen(self):
+		pass
+
+	def setupSearchCompleter(self):
+		elList = []
+
+		for i in range(self.model.rowCount()):
+			idx = self.model.index(i, 0)
+
+			if idx.isValid():
+				elList.append(idx.internalPointer()._element.name)
+
+		self.completer = QCompleter(elList, self.LNE_search)
+
+		self.completer.setCaseSensitivity(Qt.CaseInsensitive)
+		self.LNE_search.setCompleter(self.completer)

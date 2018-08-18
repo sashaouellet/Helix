@@ -202,5 +202,3 @@ class Operation(object):
 			self.progressDialog.close()
 		QApplication.instance().restoreOverrideCursor()
 
-
-
