@@ -12,7 +12,7 @@ from helix.database.person import Person
 from helix.database.fix import Fix
 from helix.database.publishedFile import PublishedFile
 from helix.database.snapshot import Snapshot
-from helix.database.checkpoint import Checkpoint
+from helix.database.stage import Stage
 from helix.database.sql import Manager
 
 root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

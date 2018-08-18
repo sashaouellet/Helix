@@ -3,8 +3,8 @@ from helix.database.shot import Shot
 from helix.database.show import Show
 import helix.environment.environment as env
 
-class Checkpoint(DatabaseObject):
-	TABLE = 'checkpoints'
+class Stage(DatabaseObject):
+	TABLE = 'stages'
 	PK = 'id'
 
 	# Stages "enum"
@@ -38,7 +38,7 @@ class Checkpoint(DatabaseObject):
 	}
 
 	def __init__(self, shotId, stage, show=None, dummy=False):
-		self.table = Checkpoint.TABLE
+		self.table = Stage.TABLE
 		self.shotId = shotId
 		self.stage = stage
 		self._exists = False
@@ -51,8 +51,8 @@ class Checkpoint(DatabaseObject):
 		if shot is None or not shot.exists():
 			raise ValueError('Shot does not exist')
 
-		if stage not in Checkpoint.STAGES:
-			raise ValueError('Invalid stage. Must be one of: {}'.format(', '.join(Checkpoint.STAGES)))
+		if stage not in Stage.STAGES:
+			raise ValueError('Invalid stage. Must be one of: {}'.format(', '.join(Stage.STAGES)))
 
 		fetched = self.exists(fetch=True)
 
@@ -71,18 +71,18 @@ class Checkpoint(DatabaseObject):
 			if not s:
 				raise ValueError('No such show: {}'.format(self.show))
 
-			self.status = Checkpoint.STATUS[0] # Set to N/A to begin with
+			self.status = Stage.STATUS[0] # Set to N/A to begin with
 			self.begin_date = None
 			self.completion_date = None
 			self.assigned_to = None
 
 	@property
 	def pk(self):
-		return Checkpoint.PK
+		return Stage.PK
 
 	@property
 	def id(self):
-		return super(Checkpoint, self)._id(
+		return super(Stage, self)._id(
 			'{}_{}'.format(
 				self.shotId,
 				self.stage
@@ -91,5 +91,5 @@ class Checkpoint(DatabaseObject):
 
 	@staticmethod
 	def dummy():
-		return Checkpoint('', '', dummy=True)
+		return Stage('', '', dummy=True)
 

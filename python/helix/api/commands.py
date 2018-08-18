@@ -1,7 +1,7 @@
 import sys, os, shlex, shutil, getpass, traceback
 import argparse
 import helix.environment.environment as env
-from helix import hxdb, Show, Sequence, Shot, Element, Checkpoint, Snapshot
+from helix import hxdb, Show, Sequence, Shot, Element, Stage, Snapshot
 from helix.api.exceptions import *
 from helix.environment.permissions import PermissionHandler, permissionCheck
 
@@ -53,17 +53,17 @@ def rmseq(seqNum, clean=False):
 	print 'Successfully removed sequence'
 
 @permissionCheck('CREATE_SHOT')
-def mkshot(seqNum, shotNum, start=0, end=0, clipName=None, checkpoints='delivered'):
+def mkshot(seqNum, shotNum, start=0, end=0, clipName=None, stages='delivered'):
 	shot = Shot(shotNum, seqNum, start=start, end=end, clipName=clipName, makeDirs=True)
 
 	if shot.insert():
-		stages = [s.strip().lower() for s in checkpoints.split(',')]
+		stages = [s.strip().lower() for s in stages.split(',')]
 
 		if 'delivered' not in stages:
 			stages.append('delivered')
 
 		for stage in stages:
-			shot.addCheckpointStage(stage)
+			shot.addStage(stage)
 
 		print 'Successfully created shot {}'.format(shot.num)
 		return True
@@ -121,7 +121,7 @@ def get(elType, name=None, sequence=None, shot=None):
 	print 'Working on {}'.format(element)
 
 @permissionCheck('CREATE_SNAPSHOT')
-def mksnapshot(input, sequence, shot, clipName=None, commentText='', blackBars=False, shotNum=False, frame=False, author=False, comment=False, checkpoints=False, date=False):
+def mksnapshot(input, sequence, shot, clipName=None, commentText='', blackBars=False, shotNum=False, frame=False, author=False, comment=False, stages=False, date=False):
 	snapshot = Snapshot(shot, sequence, clipName=clipName, comment=commentText, makeDirs=True)
 
 	import helix.api.nuke as hxnk
@@ -386,7 +386,7 @@ def main(cmd, argv):
 		parser.add_argument('--start', '-s', default=0, help='Start frame of the shot')
 		parser.add_argument('--end', '-e', default=0, help='End frame of the shot')
 		parser.add_argument('--clipName', '-c', default=None, help='The name of the clip associated with this shot')
-		parser.add_argument('--checkpoints', default='delivered', help='Comma-separated list of checkpoint stages to initially create for the shot. The "delivered" stage is always made.')
+		parser.add_argument('--stages', default='delivered', help='Comma-separated list of stages to initially create for the shot. The "delivered" stage is always made.')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
 

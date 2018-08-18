@@ -7,7 +7,7 @@ class Manager(object):
 					'sequences',
 					'shots',
 					'elements',
-					'checkpoints',
+					'stages',
 					'snapshots',
 					'publishedFiles',
 					'fixes',
@@ -193,7 +193,7 @@ class Manager(object):
 		)
 		self.conn.execute(
 		'''
-			CREATE TABLE IF NOT EXISTS 'checkpoints' (
+			CREATE TABLE IF NOT EXISTS 'stages' (
 				'id'				VARCHAR(32) PRIMARY KEY NOT NULL UNIQUE,
 				'shotId'			VARCHAR(32) NOT NULL,
 				'show'				VARCHAR(10) NOT NULL,

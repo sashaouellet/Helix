@@ -118,31 +118,31 @@ class Shot(ElementContainer, FixMixin):
 			else:
 				return None
 
-	def addCheckpointStage(self, stage):
-		from helix.database.checkpoint import Checkpoint
+	def addStage(self, stage):
+		from helix import Stage
 
-		if stage.lower() not in Checkpoint.STAGES:
-			raise ValueError('Invalid stage "{}". Must be one of: {}'.format(stage, ', '.join(Checkpoint.STAGES)))
+		if stage.lower() not in Stage.STAGES:
+			raise ValueError('Invalid stage "{}". Must be one of: {}'.format(stage, ', '.join(Stage.STAGES)))
 
-		cp = Checkpoint(self.id, stage, show=self.show)
+		stage = Stage(self.id, stage, show=self.show)
 
-		if cp.exists():
-			print 'Checkpoint "{}" has already been added for this shot'.format(stage)
+		if stage.exists():
+			print 'Stage "{}" has already been added for this shot'.format(stage)
 		else:
-			cp.insert()
+			stage.insert()
 
-	def getCheckpoints(self):
+	def getStages(self):
 		from helix.database.sql import Manager
-		from helix.database.checkpoint import Checkpoint
+		from helix import Stage
 
 		with Manager(willCommit=False) as mgr:
-			query = """SELECT * FROM {} WHERE shotId='{}'""".format(Checkpoint.TABLE, self.id)
-			cps = []
+			query = """SELECT * FROM {} WHERE shotId='{}'""".format(Stage.TABLE, self.id)
+			stages = []
 
 			for row in mgr.connection().execute(query).fetchall():
-				cps.append(Checkpoint.dummy().unmap(row))
+				stages.append(Stage.dummy().unmap(row))
 
-			return cps
+			return stages
 
 	def __str__(self):
 		return 'Shot ' + str(self.num) + (self.clipName if self.clipName else '')

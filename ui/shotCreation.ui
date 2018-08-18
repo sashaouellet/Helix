@@ -148,7 +148,7 @@
           </sizepolicy>
          </property>
          <property name="text">
-          <string>Checkpoint stages to create:</string>
+          <string>Stages to create:</string>
          </property>
         </widget>
        </item>

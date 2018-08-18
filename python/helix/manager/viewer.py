@@ -2,7 +2,7 @@ import os, sys
 from datetime import datetime
 
 import helix
-from helix import Show, Sequence, Shot, Element, Checkpoint
+from helix import Show, Sequence, Shot, Element, Stage
 import helix.database.database as db
 import helix.api.commands as hxcmds
 import helix.environment.environment as env
@@ -13,7 +13,7 @@ from helix.manager.config import ConfigEditorDialog
 from helix.manager.console import Console
 from helix.manager.element import ElementViewWidget, ElementPickerDialog, PickMode
 from helix.manager.fixes import FixDialog, FixView
-from helix.manager.checkpoints import UpdateCheckpointDialog, CheckpointStatusDialog
+from helix.manager.stages import UpdateStageDialog, StageStatusDialog
 from helix.utils.qtutils import Node, ExceptionDialog, FileChooserLayout, ElementListWidgetItem, Operation
 import helix.utils.utils as utils
 
@@ -548,11 +548,11 @@ class NewShotDialog(QDialog):
 
 		self.stageChecks = []
 
-		for stage in Checkpoint.STAGES:
+		for stage in Stage.STAGES:
 			chk = QCheckBox(utils.capitalize(stage))
 
 			# We always want the shot to be created with at least this stage
-			if stage == Checkpoint.DELIVERED:
+			if stage == Stage.DELIVERED:
 				chk.setChecked(True)
 				chk.setEnabled(False)
 
@@ -614,7 +614,7 @@ class NewShotDialog(QDialog):
 
 		stages = [str(check.text()).lower() for check in self.stageChecks if check.isChecked()]
 
-		cmd.extend(['--checkpoints', '"' + ','.join(stages) + '"'])
+		cmd.extend(['--stages', '"' + ','.join(stages) + '"'])
 
 		console.inject(['pop', self._show])
 
@@ -1605,27 +1605,27 @@ class ManagerWindow(QMainWindow):
 			# Fallback to show/seq/shot
 			self.handleDataEdit(self.LST_shows.currentIndex())
 
-	def handleUpdateCheckpoint(self):
+	def handleUpdateStage(self):
 		idx = self.LST_shots.selectionModel().currentIndex()
 
 		if not idx.isValid():
 			return
 
 		if not isinstance(idx.internalPointer().data(0), Shot):
-			raise RuntimeError('Could not obtain shot from selection, but checkpoints were queried')
+			raise RuntimeError('Could not obtain shot from selection, but stages were queried')
 
-		UpdateCheckpointDialog(self, idx.internalPointer().data(0)).show()
+		UpdateStageDialog(self, idx.internalPointer().data(0)).show()
 
-	def handleCheckpointStatus(self):
+	def handleStageStatus(self):
 		idx = self.LST_seqs.selectionModel().currentIndex()
 
 		if not idx.isValid():
 			return
 
 		if not isinstance(idx.internalPointer().data(0), Sequence):
-			raise RuntimeError('Could not obtain sequence from selection, but checkpoint status was queried')
+			raise RuntimeError('Could not obtain sequence from selection, but stage status was queried')
 
-		CheckpointStatusDialog(self, idx.internalPointer().data(0)).show()
+		StageStatusDialog(self, idx.internalPointer().data(0)).show()
 
 	def buildContextMenu(self, obj):
 		self.MENU_contextMenu.clear()
@@ -1635,10 +1635,10 @@ class ManagerWindow(QMainWindow):
 		elif obj == Sequence:
 			self.MENU_contextMenu.setTitle('Sequence')
 
-			self.ACT_checkpointStatus = QAction('Checkpoint Status', self.MENU_contextMenu)
-			self.ACT_checkpointStatus.triggered.connect(self.handleCheckpointStatus)
+			self.ACT_stageStatus = QAction('Stage Status', self.MENU_contextMenu)
+			self.ACT_stageStatus.triggered.connect(self.handleStageStatus)
 
-			self.MENU_contextMenu.addAction(self.ACT_checkpointStatus)
+			self.MENU_contextMenu.addAction(self.ACT_stageStatus)
 
 		elif obj == Shot:
 			self.MENU_contextMenu.setTitle('Shot')
@@ -1658,13 +1658,13 @@ class ManagerWindow(QMainWindow):
 			self.MENU_snapshots.addAction(self.ACT_newSnapshot)
 			self.MENU_snapshots.addAction(self.ACT_snapshotBrowser)
 
-			self.ACT_updateCheckpoint = QAction('Update checkpoint...', self.MENU_contextMenu)
-			self.ACT_updateCheckpoint.triggered.connect(self.handleUpdateCheckpoint)
+			self.ACT_updateStage = QAction('Update stage...', self.MENU_contextMenu)
+			self.ACT_updateStage.triggered.connect(self.handleUpdateStage)
 
 			self.MENU_contextMenu.addAction(self.ACT_slapComp)
 			self.MENU_contextMenu.addSeparator()
 			self.MENU_contextMenu.addMenu(self.MENU_snapshots)
-			self.MENU_contextMenu.addAction(self.ACT_updateCheckpoint)
+			self.MENU_contextMenu.addAction(self.ACT_updateStage)
 			self.MENU_contextMenu.addSeparator()
 			self.MENU_contextMenu.addAction(self.ACT_shotManifest)
 

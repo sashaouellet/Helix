@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Checkpoint Status</string>
+   <string>Stage Status</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
