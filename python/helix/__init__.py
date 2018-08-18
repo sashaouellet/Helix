@@ -1,7 +1,7 @@
 import os, sys
 
-import helix.database.database as hxdb
 import helix.environment.environment as hxenv
+import helix.database.database as hxdb
 from helix.database.database import DatabaseObject
 from helix.database.show import Show
 from helix.database.sequence import Sequence

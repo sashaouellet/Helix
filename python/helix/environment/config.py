@@ -54,20 +54,17 @@ class GeneralConfigHandler(ConfigFileHandler):
 			self.config.set('Departments', '# The master list of all possible departments users in the system will be a part of. Used for generating reports and being able to assign fixes on a per-department basis.')
 			self.config.set('Departments', 'departments', 'animation,layout,editorial,sets,lookdev,lighting,fx,cfx,comp,production,pipeline')
 
-			self.config.add_section('Permissions')
-			self.config.set('Permissions', '# Define any number of user groups, the permission "nodes" for the group, and a list of members of that group')
-			self.config.set('Permissions', '# The following permission node list indicates that users in ExampleGroup can do all helix commands (helix.*) except children of the helix.delete permission nodes. The "^" indicates NOT, while "*" indicates all children under.')
-			self.config.set('Permissions', 'ExampleGroup', 'helix.*, ^helix.delete.*')
-			self.config.set('Permissions', 'ExampleGroupUsers', 'souell20')
-			self.config.set('Permissions', '# Make sure to always define something for "DefaultGroup" so that there is a fallback for new users')
-			self.config.set('Permissions', 'DefaultGroup', 'helix.pop')
+			self.config.add_section('Paths')
+			self.config.set('Paths', '# OS specific paths so that Helix assets can work universally')
+			self.config.set('Paths', 'HELIX_LINUX_HOME', '/some/path/to/helix/system/root')
+			self.config.set('Paths', 'HELIX_WINDOWS_HOME', 'C:\\some\\windows\\path')
 
 			self.config.add_section('Executables-Linux')
 			self.config.set('Executables-Linux', '# Defines the locations of Maya, Nuke, and Houdini executables for Linux. The same idea applies for the Executables-Windows and Executables-Mac sections.')
 			self.config.set('Executables-Linux', '# If a section is omitted, some Helix features will not be enabled for that particular operating system.')
-			self.config.set('Executables-Linux', 'maya', '/usr/local/bin/nuke')
-			self.config.set('Executables-Linux', 'houdini','/usr/autodesk/maya2018/bin/maya2018')
-			self.config.set('Executables-Linux', 'nuke','/opt/hfs16.5.268/bin/houdini')
+			self.config.set('Executables-Linux', 'nuke', '/usr/local/bin/nuke')
+			self.config.set('Executables-Linux', 'maya','/usr/autodesk/maya2018/bin/maya2018')
+			self.config.set('Executables-Linux', 'houdini','/opt/hfs16.5.268/bin/houdini')
 
 			self.config.add_section('Executables-Windows')
 			self.config.set('Executables-Windows', '# Windows executables here...')
@@ -92,6 +89,14 @@ class GeneralConfigHandler(ConfigFileHandler):
 
 		if self.config.has_section('Departments'):
 			self.departments = [d.strip() for d in self.config.get('Departments', 'departments').split(',')]
+
+		if self.config.has_section('Paths'):
+			if self.config.has_option('Paths', 'HELIX_LINUX_HOME'):
+				os.environ['HELIX_LINUX_HOME'] = self.config.get('Paths', 'HELIX_LINUX_HOME')
+			if self.config.has_option('Paths', 'HELIX_LINUX_HOME'):
+				os.environ['HELIX_WINDOWS_HOME'] = self.config.get('Paths', 'HELIX_WINDOWS_HOME')
+			if self.config.has_option('Paths', 'HELIX_LINUX_HOME'):
+				os.environ['HELIX_MAC_HOME'] = self.config.get('Paths', 'HELIX_MAC_HOME')
 
 		if self.config.has_section('Executables-Linux'):
 			if self.config.has_option('Executables-Linux', 'maya'):
@@ -132,6 +137,13 @@ class GeneralConfigHandler(ConfigFileHandler):
 		# Departments
 		self.config.add_section('Departments')
 		self.config.set('Departments', 'departments', ', '.join(self.departments))
+
+		# Paths
+		self.config.add_section('Paths')
+
+		for homePath in ('HELIX_LINUX_HOME', 'HELIX_WINDOWS_HOME', 'HELIX_MAC_HOME'):
+			if homePath in os.environ:
+				self.config.set(homePath, os.environ[homePath])
 
 		# Linux executables
 		if (self.mayaLinux or self.houdiniLinux or self.nukeLinux):

@@ -23,6 +23,9 @@ def setEnvironment(var, value):
 	os.environ[VAR_PREFIX + var.upper()] = value
 
 def getEnvironment(var, silent=False):
+	if var.upper() == 'HOME':
+		var = '{}_HOME'.format(OS)
+
 	env = os.environ.get(VAR_PREFIX + var.upper())
 
 	if not env and not silent:
@@ -31,7 +34,10 @@ def getEnvironment(var, silent=False):
 	return env
 
 def getConfigPath():
-	return os.path.join(getEnvironment('home'), 'config.ini')
+	return getEnvironment('config')
+
+def getDBPath():
+	return os.path.join(os.path.dirname(getConfigPath()), 'helix.db')
 
 def getAllEnv():
 	ret = {}
@@ -103,6 +109,10 @@ DATE_FORMAT = cfg.config.get('Formatting', 'dateformat')
 VERSION_PADDING = cfg.config.getint('Formatting', 'versionpadding')
 FRAME_PADDING = cfg.config.getint('Formatting', 'framepadding')
 SEQUENCE_SHOT_PADDING = cfg.config.getint('Formatting', 'sequenceshotpadding')
+
+setEnvironment('db', getDBPath())
+setEnvironment('work', os.path.join(getEnvironment('home'), 'work'))
+setEnvironment('release', os.path.join(getEnvironment('home'), 'release'))
 
 show = None
 element = None

@@ -16,12 +16,12 @@ class Manager(object):
 				]
 
 	def __init__(self, location=None, willCommit=True):
-		import helix.environment.environment as env
+		from helix import hxenv
 
 		if location:
 			self.location = location
 		else:
-			self.location = env.getEnvironment('db')
+			self.location = hxenv.getEnvironment('db')
 
 		self.willCommit = willCommit
 
@@ -50,7 +50,7 @@ class Manager(object):
 		return [(str(r[1]), bool(r[3])) for r in self.conn.execute('PRAGMA TABLE_INFO ({})'.format(table)).fetchall()]
 
 	def _insert(self, table, obj):
-		from helix.database.database import DatabaseObject
+		from helix import DatabaseObject
 
 		if isinstance(obj, tuple):
 			values = obj

@@ -1901,7 +1901,7 @@ class BasicElementView(QTableWidget):
 
 if __name__ == '__main__':
 	app = QApplication(sys.argv)
-	dbPath = None
+	dbPath = env.getDBPath()
 	env.HAS_UI = True
 
 	app.setOrganizationName('Helix')
