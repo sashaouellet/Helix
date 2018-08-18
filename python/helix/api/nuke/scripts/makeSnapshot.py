@@ -2,8 +2,8 @@ import argparse
 
 def parseArgs():
 	parser = argparse.ArgumentParser(
-		prog='makeTake',
-		description='Makes/exports a take given an input movie or frame sequence'
+		prog='makeSnapshot',
+		description='Makes/exports a snapshot given an input movie or frame sequence'
 	)
 
 	parser.add_argument(

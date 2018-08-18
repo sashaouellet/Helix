@@ -8,12 +8,12 @@ from helix.database.person import Person
 import helix.environment.environment as env
 from helix.utils.fileutils import SHOT_FORMAT, SEQUENCE_FORMAT
 
-class Take(DatabaseObject):
-	TABLE = 'takes'
+class Snapshot(DatabaseObject):
+	TABLE = 'snapshots'
 	PK = 'id'
 
 	def __init__(self, shot, sequence, show=None, clipName=None, author=None, comment=None, start=None, end=None, makeDirs=False, dummy=False):
-		self.table = Take.TABLE
+		self.table = Snapshot.TABLE
 		self.show = show if show else env.getEnvironment('show')
 		self.sequence = sequence
 		self.shot = shot
@@ -63,7 +63,7 @@ class Take(DatabaseObject):
 				self.first_frame = self.first_frame if self.first_frame else sh.start
 				self.last_frame = self.last_frame if self.last_frame else sh.end
 
-		self.num = Take.nextTakeNum(self.show, self.sequenceId, self.shotId)
+		self.num = Snapshot.nextSnapshotNum(self.show, self.sequenceId, self.shotId)
 
 		fetched = self.exists(fetch=True)
 
@@ -86,14 +86,14 @@ class Take(DatabaseObject):
 
 			shotDir = Shot.fromPk(self.shotId).release_path
 
-			self.file_path = os.path.join(shotDir, '.takes', str(self.num))
+			self.file_path = os.path.join(shotDir, '.snapshots', str(self.num))
 
 			if makeDirs and not os.path.isdir(self.file_path):
 				os.makedirs(self.file_path)
 
 	@property
 	def id(self):
-		return super(Take, self)._id(
+		return super(Snapshot, self)._id(
 			'{}_{}_{}_{}'.format(
 				self.show,
 				self.sequenceId,
@@ -104,11 +104,11 @@ class Take(DatabaseObject):
 
 	@property
 	def pk(self):
-		return Take.PK
+		return Snapshot.PK
 
 	@property
 	def imageSequence(self):
-		fileName = '{}_take{}.{}.png'.format(
+		fileName = '{}_snapshot{}.{}.png'.format(
 			str(Shot.fromPk(self.shotId)).replace(' ', '_').lower(),
 			str(self.num),
 			'#' * env.FRAME_PADDING
@@ -118,7 +118,7 @@ class Take(DatabaseObject):
 
 	@property
 	def mov(self):
-		fileName = '{}_take{}.mov'.format(
+		fileName = '{}_snapshot{}.mov'.format(
 			str(Shot.fromPk(self.shotId)).replace(' ', '_').lower(),
 			str(self.num)
 		)
@@ -137,14 +137,14 @@ class Take(DatabaseObject):
 			return None
 
 	@staticmethod
-	def nextTakeNum(show, sequence, shot):
+	def nextSnapshotNum(show, sequence, shot):
 		from helix.database.sql import Manager
 
 		with Manager(willCommit=False) as mgr:
 			res = mgr.connection().execute(
 				'''
 					SELECT MAX(num) from {} WHERE show='{}' AND sequenceId='{}' AND shotId='{}'
-				'''.format(Take.TABLE, show, sequence, shot)
+				'''.format(Snapshot.TABLE, show, sequence, shot)
 			).fetchone()
 
 			if res and res[0]:
@@ -154,5 +154,5 @@ class Take(DatabaseObject):
 
 	@staticmethod
 	def dummy():
-		return Take('', '', dummy=True)
+		return Snapshot('', '', dummy=True)
 

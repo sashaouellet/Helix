@@ -8,10 +8,11 @@ class Manager(object):
 					'shots',
 					'elements',
 					'checkpoints',
-					'takes',
+					'snapshots',
 					'publishedFiles',
 					'fixes',
-					'people'
+					'people',
+					'permissions'
 				]
 
 	def __init__(self, location=None, willCommit=True):
@@ -150,7 +151,7 @@ class Manager(object):
 				'start'			INTEGER,
 				'end'			INTEGER,
 				'clipName'		TEXT,
-				'take'			INTEGER,
+				'snapshot'		INTEGER,
 				'thumbnail'		TEXT,
 				'work_path'		TEXT NOT NULL,
 				'release_path'	TEXT NOT NULL,
@@ -262,7 +263,7 @@ class Manager(object):
 		)
 		self.conn.execute(
 		'''
-			CREATE TABLE IF NOT EXISTS 'takes' (
+			CREATE TABLE IF NOT EXISTS 'snapshots' (
 				'id'			VARCHAR(32) PRIMARY KEY NOT NULL UNIQUE,
 				'num'			INTEGER NOT NULL,
 				'author'		VARCHAR(10) NOT NULL,

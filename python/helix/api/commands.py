@@ -1,7 +1,7 @@
 import sys, os, shlex, shutil, getpass, traceback
 import argparse
 import helix.environment.environment as env
-from helix import hxdb, Show, Sequence, Shot, Element, Checkpoint, Take
+from helix import hxdb, Show, Sequence, Shot, Element, Checkpoint, Snapshot
 from helix.api.exceptions import *
 from helix.environment.permissions import PermissionHandler, permissionCheck
 
@@ -120,27 +120,27 @@ def get(elType, name=None, sequence=None, shot=None):
 
 	print 'Working on {}'.format(element)
 
-@permissionCheck('CREATE_TAKE')
-def mktake(input, sequence, shot, clipName=None, commentText='', blackBars=False, shotNum=False, frame=False, author=False, comment=False, checkpoints=False, date=False, take=False):
-	take = Take(shot, sequence, clipName=clipName, comment=commentText, makeDirs=True)
+@permissionCheck('CREATE_SNAPSHOT')
+def mksnapshot(input, sequence, shot, clipName=None, commentText='', blackBars=False, shotNum=False, frame=False, author=False, comment=False, checkpoints=False, date=False):
+	snapshot = Snapshot(shot, sequence, clipName=clipName, comment=commentText, makeDirs=True)
 
 	import helix.api.nuke as hxnk
-	from helix.api.nuke.scripts import makeTake
+	from helix.api.nuke.scripts import makeSnapshot
 
 	args = [
 		input,
-		'--seqOut', take.imageSequence,
-		'--movOut', take.mov
+		'--seqOut', snapshot.imageSequence,
+		'--movOut', snapshot.mov
 	]
 
-	proc = hxnk.Nuke().runCommandLineScript(makeTake.__file__, args=args)
+	proc = hxnk.Nuke().runCommandLineScript(makeSnapshot.__file__, args=args)
 	proc.communicate()
 
-	seq = FrameSequence(take.file_path)
-	take.first_frame = seq.first()
-	take.last_frame = seq.last()
+	seq = FrameSequence(snapshot.file_path)
+	snapshot.first_frame = seq.first()
+	snapshot.last_frame = seq.last()
 
-	take.insert()
+	snapshot.insert()
 
 # Element-context commands
 @permissionCheck('PUBLISH')

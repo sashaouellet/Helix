@@ -11,7 +11,7 @@ class PermissionNodes(object):
 		CREATE_SEQ 		= 'helix.create.sequence',
 		CREATE_SHOT 	= 'helix.create.shot',
 		CREATE_ELEMENT 	= 'helix.create.element',
-		CREATE_TAKE		= 'helix.create.take',
+		CREATE_SNAPSHOT	= 'helix.create.snapshot',
 		DELETE_SHOW 	= 'helix.delete.show',
 		DELETE_SEQ 		= 'helix.delete.sequence',
 		DELETE_SHOT 	= 'helix.delete.shot',

@@ -11,7 +11,7 @@ from helix.database.elementContainer import ElementContainer
 from helix.database.person import Person
 from helix.database.fix import Fix
 from helix.database.publishedFile import PublishedFile
-from helix.database.take import Take
+from helix.database.snapshot import Snapshot
 from helix.database.checkpoint import Checkpoint
 from helix.database.sql import Manager
 

@@ -58,7 +58,7 @@ class Shot(ElementContainer, FixMixin):
 			self.start = start
 			self.end = end
 			self.clipName = clipName
-			self.take = 0
+			self.snapshot = 0
 
 			s = Show.fromPk(self.show)
 			sq = Sequence(self.sequence, show=self.show)
@@ -100,9 +100,9 @@ class Shot(ElementContainer, FixMixin):
 			debug=debug
 		)
 
-	def getLatestTake(self):
+	def getLatestSnapshot(self):
 		from helix.database.sql import Manager
-		from helix.database.take import Take
+		from helix import Snapshot
 
 		with Manager(willCommit=False) as mgr:
 			res = mgr.connection().execute(
@@ -110,11 +110,11 @@ class Shot(ElementContainer, FixMixin):
 					SELECT *
 					FROM {table}
 					WHERE num = (SELECT MAX(num) FROM {table} WHERE show='{show}' AND sequenceId='{seq}' AND shotId='{shot}')
-				'''.format(table=Take.TABLE, show=self.show, seq=self.parent.id, shot=self.id)
+				'''.format(table=Snapshot.TABLE, show=self.show, seq=self.parent.id, shot=self.id)
 			).fetchone()
 
 			if res:
-				return Take.dummy().unmap(res)
+				return Snapshot.dummy().unmap(res)
 			else:
 				return None
 
@@ -171,10 +171,10 @@ class Shot(ElementContainer, FixMixin):
 
 	@property
 	def thumbnail(self):
-		take = self.getLatestTake()
+		snapshot = self.getLatestSnapshot()
 
-		if take is not None:
-			return take.thumbnail
+		if snapshot is not None:
+			return snapshot.thumbnail
 
 		return None
 

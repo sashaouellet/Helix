@@ -1651,19 +1651,19 @@ class ManagerWindow(QMainWindow):
 			self.ACT_shotManifest.triggered.connect(self.handleShotManifest)
 
 			# Sub menus
-			self.MENU_takes = QMenu('Takes', parent=self.MENU_contextMenu)
-			self.ACT_newTake = QAction('New take...', self.MENU_takes)
-			self.ACT_takeBrowser = QAction('Take browser', self.MENU_takes)
+			self.MENU_snapshots = QMenu('Snapshots', parent=self.MENU_contextMenu)
+			self.ACT_newSnapshot = QAction('New snapshot...', self.MENU_snapshots)
+			self.ACT_snapshotBrowser = QAction('Snapshot browser', self.MENU_snapshots)
 
-			self.MENU_takes.addAction(self.ACT_newTake)
-			self.MENU_takes.addAction(self.ACT_takeBrowser)
+			self.MENU_snapshots.addAction(self.ACT_newSnapshot)
+			self.MENU_snapshots.addAction(self.ACT_snapshotBrowser)
 
 			self.ACT_updateCheckpoint = QAction('Update checkpoint...', self.MENU_contextMenu)
 			self.ACT_updateCheckpoint.triggered.connect(self.handleUpdateCheckpoint)
 
 			self.MENU_contextMenu.addAction(self.ACT_slapComp)
 			self.MENU_contextMenu.addSeparator()
-			self.MENU_contextMenu.addMenu(self.MENU_takes)
+			self.MENU_contextMenu.addMenu(self.MENU_snapshots)
 			self.MENU_contextMenu.addAction(self.ACT_updateCheckpoint)
 			self.MENU_contextMenu.addSeparator()
 			self.MENU_contextMenu.addAction(self.ACT_shotManifest)
