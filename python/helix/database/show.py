@@ -161,6 +161,22 @@ class Show(ElementContainer, FixMixin):
 		return (self.resolution_x, self.resolution_y)
 
 	@property
+	def work_path(self):
+		return env.convertPath(self._work_path)
+
+	@work_path.setter
+	def work_path(self, val):
+		self._work_path = val
+
+	@property
+	def release_path(self):
+		return env.convertPath(self._release_path)
+
+	@release_path.setter
+	def release_path(self, val):
+		self._release_path = val
+
+	@property
 	def directory(self):
 		return self.alias
 

@@ -159,6 +159,22 @@ class Shot(ElementContainer, FixMixin):
 		)
 
 	@property
+	def work_path(self):
+		return env.convertPath(self._work_path)
+
+	@work_path.setter
+	def work_path(self, val):
+		self._work_path = val
+
+	@property
+	def release_path(self):
+		return env.convertPath(self._release_path)
+
+	@release_path.setter
+	def release_path(self, val):
+		self._release_path = val
+
+	@property
 	def directory(self):
 		return '{}{}'.format(
 			SHOT_FORMAT.format(str(self.num).zfill(env.SEQUENCE_SHOT_PADDING)),

@@ -516,6 +516,22 @@ class Element(DatabaseObject, FixMixin):
 		return super(Element, self)._id(self._rawId)
 
 	@property
+	def work_path(self):
+		return env.convertPath(self._work_path)
+
+	@work_path.setter
+	def work_path(self, val):
+		self._work_path = val
+
+	@property
+	def release_path(self):
+		return env.convertPath(self._release_path)
+
+	@release_path.setter
+	def release_path(self, val):
+		self._release_path = val
+
+	@property
 	def directory(self):
 		nameDir = '' if self.name.startswith('_') else self.name
 		return os.path.join(self.type, nameDir)
