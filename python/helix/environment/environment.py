@@ -103,6 +103,21 @@ def getConfig():
 	from helix.environment.config import GeneralConfigHandler
 	return GeneralConfigHandler()
 
+def convertPath(path):
+	homePaths = ('HELIX_LINUX_HOME', 'HELIX_WINDOWS_HOME', 'HELIX_MAC_HOME')
+	for homePath in homePaths:
+		if homePath in os.environ:
+			val = os.environ[homePath]
+
+			if path.startswith(val):
+				return path.replace(val, getEnvironment('home'))
+
+	raise ValueError('Unknown location for path: {}. Currently configured paths are: {}'.format(
+			path,
+			', '.join([os.environ[h] for h in homePaths if h in os.environ])
+		)
+	)
+
 cfg = getConfig()
 
 DATE_FORMAT = cfg.config.get('Formatting', 'dateformat')
