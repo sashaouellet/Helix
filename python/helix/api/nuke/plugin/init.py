@@ -4,7 +4,6 @@ from helix import hxenv
 Nuke.startup()
 
 def filenameFix(filename):
-	print filename
 	try:
 		return hxenv.convertPath(filename)
 	except ValueError:
