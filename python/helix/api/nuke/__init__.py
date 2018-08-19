@@ -41,6 +41,8 @@ class Nuke(DCCPackage):
 					directory=element.work_path
 				)
 
+				os.chdir(element.work_path)
+
 				container = element.parent
 
 				while not isinstance(container, Show):
@@ -55,9 +57,15 @@ class Nuke(DCCPackage):
 					name='SHOW',
 					directory=container.work_path
 				)
+
 			print 'Done'
 		except EnvironmentError:
 			print 'Could not initialize Nuke for Helix without an asset'
+
+		projDir = nuke.Root().knob('project_directory').value()
+
+		if projDir:
+			os.chdir(projDir)
 
 	def env(self):
 		return {
