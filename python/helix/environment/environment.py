@@ -104,19 +104,32 @@ def getConfig():
 	return GeneralConfigHandler()
 
 def convertPath(path):
+	from helix.utils.tokenizer import Tokenizer
 	homePaths = ('HELIX_LINUX_HOME', 'HELIX_WINDOWS_HOME', 'HELIX_MAC_HOME')
+	tk = None
+
 	for homePath in homePaths:
 		if homePath in os.environ:
 			val = os.environ[homePath]
 
-			if path.startswith(val):
-				return path.replace(val, getEnvironment('home'))
+			try:
+				tk = Tokenizer(path, val)
+			except ValueError:
+				continue
 
-	raise ValueError('Unknown location for path: {}. Currently configured paths are: {}'.format(
-			path,
-			', '.join([os.environ[h] for h in homePaths if h in os.environ])
-		)
-	)
+	# The input path didn't match any of our patterns, so just return back what we got in
+	if not tk:
+		return path
+
+	currentHome = getEnvironment('home', silent=True)
+
+	if not currentHome:
+		return path
+
+	newPath = tk.convertTo(currentHome)
+	newPath = Tokenizer(newPath, currentHome).replace('USER', USER)
+
+	return newPath.replace('\\', os.path.sep).replace('/', os.path.sep)
 
 cfg = getConfig()
 
