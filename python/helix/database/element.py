@@ -366,7 +366,7 @@ class Element(DatabaseObject, FixMixin):
 			for versionless, versioned in zip(fileName.getFramesAsFilePaths(), newSeq.getFramesAsFilePaths()):
 				os.link(versioned, versionless)
 
-			return (fileName.getFormatted(includeDir=True), newSeq.getFormatted(includeDir=True))
+			return (os.path.realpath(fileName.getFormatted(includeDir=True)), os.path.realpath(newSeq.getFormatted(includeDir=True)))
 		elif os.path.isdir(fileName):
 			print 'Publishing folder...'
 			# Directory publish
@@ -393,7 +393,7 @@ class Element(DatabaseObject, FixMixin):
 			shutil.copytree(fileName, versionedDest)
 			fileutils.linkPath(versionedDest, versionless)
 
-			return (versionless, versionedDest)
+			return (os.path.realpath(versionless), os.path.realpath(versionedDest))
 		else:
 			print 'Publishing single file...'
 			# Single file publish
@@ -417,7 +417,7 @@ class Element(DatabaseObject, FixMixin):
 			shutil.copy2(fileName, versionedDest)
 			os.link(versionedDest, versionless)
 
-			return (versionless, versionedDest)
+			return (os.path.realpath(versionless), os.path.realpath(versionedDest))
 
 		# # TODO: make versionless and versionDest read-only?
 
@@ -517,7 +517,7 @@ class Element(DatabaseObject, FixMixin):
 
 	@property
 	def work_path(self):
-		return env.convertPath(self._work_path)
+		return os.path.realpath(env.convertPath(self._work_path))
 
 	@work_path.setter
 	def work_path(self, val):
@@ -525,7 +525,7 @@ class Element(DatabaseObject, FixMixin):
 
 	@property
 	def release_path(self):
-		return env.convertPath(self._release_path)
+		return os.path.realpath(env.convertPath(self._release_path))
 
 	@release_path.setter
 	def release_path(self, val):

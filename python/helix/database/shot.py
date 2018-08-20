@@ -160,7 +160,7 @@ class Shot(ElementContainer, FixMixin):
 
 	@property
 	def work_path(self):
-		return env.convertPath(self._work_path)
+		return os.path.realpath(env.convertPath(self._work_path))
 
 	@work_path.setter
 	def work_path(self, val):
@@ -168,7 +168,7 @@ class Shot(ElementContainer, FixMixin):
 
 	@property
 	def release_path(self):
-		return env.convertPath(self._release_path)
+		return os.path.realpath(env.convertPath(self._release_path))
 
 	@release_path.setter
 	def release_path(self, val):
