@@ -303,7 +303,7 @@ class FrameSequence():
 		if format == self.HOUDINI_FRAME_FORMAT:
 			framePadding = self.HOUDINI_FRAME_FORMAT + padding if padding > 1 else self.HOUDINI_FRAME_FORMAT
 
-		fileName = '{}.{}.{}'.format(self.getPrefix(), framePadding, self.getExt())
+		fileName = '{}{}.{}'.format(self.getPrefix(), framePadding, self.getExt())
 
 		if includeDir:
 			return os.path.join(self.getDir(), fileName)
