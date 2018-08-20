@@ -8,18 +8,19 @@ __date__ = 11/27/17
 import os, re, shutil
 
 class FrameSequence():
-	FRAME_NAME_PATTERN = r'^(?P<prefix>{})(?P<framePadding>[\.\-_]\d+|[\.\-_]#+)\.(?P<ext>{})$'
+	FRAME_NAME_PATTERN = r'^(?P<prefix>{})(?P<framePadding>\d+|#+|@+|%\d{{2}}d|\$F\d*)\.(?P<ext>{})$'
 	STANDARD_FRAME_FORMAT = '#'
 	HOUDINI_FRAME_FORMAT = '$F'
+	NUKE_FORMAT = '%{}d'
 	GLOB_FORMAT = '[0-9]'
 
-	def __init__(self, path, range=(), prefix=r'[\w\-\.]+', ext=r'[a-zA-Z]+', padding=0):
+	def __init__(self, path, range=(), prefix=r'[\w\-\.]+?', ext=r'[a-zA-Z]+', padding=0):
 		self._range = ()
 		self._index = 0
 
 		if os.path.isdir(path):
 			self._dir = path
-			self._frames = self._getFrameListFromDir(self._dir, prefix, ext, range, padding)
+			self._frames = FrameSequence._getFrameListFromDir(self._dir, prefix, ext, range, padding)
 		else:
 			self._dir, fileName = os.path.split(path)
 			decomp = FrameSequence._decompose(fileName, prefix=prefix, ext=ext)
@@ -27,18 +28,18 @@ class FrameSequence():
 			if not decomp:
 				self._frames = []
 			elif isinstance(decomp, tuple):
-				prefix, _, ext = decomp
+				prefix, padding, ext = decomp
 
-			if not prefix or not ext:
-				# Not part of a sequence
-				self._frames = []
-			else:
-				# Version number could have been accidentally interpreted as a frame number, check if there are multiple frames
-				self._frames = self._getFrameListFromDir(self._dir, prefix, ext, range, padding)
-
-				if len(self._frames) == 1:
-					# Only 1 frame in this supposed "sequence," probably just a version number
+				if not prefix or not ext:
+					# Not part of a sequence
 					self._frames = []
+				else:
+					# Version number could have been accidentally interpreted as a frame number, check if there are multiple frames
+					self._frames = FrameSequence._getFrameListFromDir(self._dir, prefix, ext, range, Frame.paddingLength(padding))
+
+					if len(self._frames) == 1:
+						# Only 1 frame in this supposed "sequence," probably just a version number
+						self._frames = []
 
 		if self._frames:
 			self._range = (self._frames[0].getNumber(), self._frames[-1].getNumber())
@@ -52,7 +53,8 @@ class FrameSequence():
 		"""
 		return len(self._frames) > 0 and self._range != ()
 
-	def _getFrameListFromDir(self, dir, prefix, ext, range, padding):
+	@staticmethod
+	def _getFrameListFromDir(dir, prefix=None, ext=None, range=(), padding=None):
 		"""Given a directory to look in, retrieves the first found sequence that fits
 		the given specifications for prefix and extension. If the range specified
 		is not an empty tuple, the frame list returned is limited to that range
@@ -71,19 +73,22 @@ class FrameSequence():
 		foundArbitrary = False
 
 		for f in os.listdir(dir):
-			parts = FrameSequence._decompose(f, prefix=prefix, ext=ext)
+			if prefix is not None and ext is not None:
+				parts = FrameSequence._decompose(f, prefix=prefix, ext=ext)
+			else:
+				parts = FrameSequence._decompose(f)
 
 			if parts:
 				frame = Frame(parts[0], parts[1], parts[2], dir)
 
-				if not foundArbitrary:
+				if not foundArbitrary and prefix is None and ext is None:
 					prefix = parts[0].replace('.', '\.').replace('-', '\-')
+					padding = Frame.paddingLength(parts[1])
 					ext = parts[2]
-					padding = frame.getPadding()
 
 					foundArbitrary = True
-				else:
-					if len(parts[1]) - 1 != padding: # Must continue to match padding length
+				elif prefix is not None and ext is not None:
+					if Frame.paddingLength(parts[1]) != padding: # Must continue to match padding length
 						continue
 
 				# Is the found frame within the range, if we have specified a range to look for?
@@ -121,7 +126,7 @@ class FrameSequence():
 		return fileString
 
 	@staticmethod
-	def _decompose(file, prefix, ext):
+	def _decompose(file, prefix=r'[\w\-\.]+', ext=r'[a-zA-Z]+'):
 		"""Decomposes the given file name into its 3 parts: prefix, frame
 		padding, and extension
 
@@ -143,7 +148,6 @@ class FrameSequence():
 				and extension. Returns None if any of these 3 parts was not matched in the file
 				given
 		"""
-
 		pattern = FrameSequence.FRAME_NAME_PATTERN.format(prefix, ext)
 		regx = re.compile(pattern)
 		match = regx.match(file)
@@ -441,8 +445,6 @@ class FrameSequence():
 class Frame():
 	def __init__(self, prefix, framePadding, ext, directory):
 		self._prefix = prefix
-		self._frameNumSep = framePadding[0]
-		framePadding = framePadding[1:]
 		self._padding, self._number = self._interpretFramePadding(framePadding)
 		self._ext = ext
 		self._dir = directory
@@ -478,6 +480,24 @@ class Frame():
 		except ValueError:
 			raise ValueError('Malformed frame padding string: {}'.format(framePadding))
 
+	@staticmethod
+	def paddingLength(paddingString):
+		if re.match(r'#+|@+|\d+', paddingString):
+			return len(paddingString)
+		elif re.match(r'\$F(\d*)', paddingString):
+			num = re.match(r'\$F(\d*)', paddingString).group(1)
+
+			if not num:
+				return 1
+			else:
+				return int(num)
+		elif re.match(r'%(\d{2})d', paddingString):
+			num = re.match(r'%(\d{2})d', paddingString).group(1)
+
+			return int(num)
+
+		raise ValueError("Don't know how to parse padding string: {}".format(paddingString))
+
 	def getPrefix(self):
 		return self._prefix
 
@@ -511,7 +531,7 @@ class Frame():
 		return self._number
 
 	def getPath(self):
-		fileName = '{}{}{}.{}'.format(self._prefix, self._frameNumSep, str(self._number).zfill(self._padding), self._ext)
+		fileName = '{}{}.{}'.format(self._prefix, str(self._number).zfill(self._padding), self._ext)
 
 		return os.path.join(self._dir, fileName)
 
