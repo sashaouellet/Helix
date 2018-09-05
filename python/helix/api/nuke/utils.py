@@ -81,3 +81,20 @@ def addCustomKnobWithValue(node, knobType, name, value):
 
 	return node.knob(name)
 
+def updateReadWithElementInfo(read, element, publishedFile=None):
+	read.setName('{}_{}'.format(element.name, element.type.upper()))
+
+	# Add element id for future reference
+	elementIdKnob = addCustomKnobWithValue(read, nuke.String_Knob, 'elementId', element.id)
+	elementIdKnob.setFlag(nuke.READ_ONLY)
+
+	if publishedFile:
+		read.knob('label').setValue('Publish version: {}'.format(publishedFile.version))
+
+		if publishedFile.version != element.pubVersion:
+			read.knob('note_font_color').setValue(3036676351) # Red
+		else:
+			read.knob('note_font_color').setValue(4980991) # Green
+
+
+

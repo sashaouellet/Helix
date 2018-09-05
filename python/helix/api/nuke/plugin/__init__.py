@@ -1,11 +1,12 @@
 from PySide2.QtWidgets import QApplication, QDialog
 
 from helix.manager.element import PublishedAssetBrowser
-from helix import Show, Element, hxenv
+from helix import Show, Element, PublishedFile, hxenv
 import helix.api.nuke.utils as nkutils
 from helix.utils.fileclassification import FrameSequence
 
 import nuke
+import os
 
 def importAsset():
 	element = Element.fromPk(hxenv.getEnvironment('element'))
@@ -27,15 +28,14 @@ def importAsset():
 			else:
 				read = nkutils.read(dialog.selectedPf.file_path)
 
-			el = Element.fromPk(dialog.selectedPf.elementId)
-			read.setName('{}_{}'.format(el.name, el.type.upper()))
-			read.knob('label').setValue('Publish version: {}'.format(dialog.selectedPf.version))
+			nkutils.updateReadWithElementInfo(read, Element.fromPk(dialog.selectedPf.elementId), dialog.selectedPf)
 
-			if dialog.selectedPf.version != el.pubVersion:
-				read.knob('note_font_color').setValue(3036676351) # Red
-			else:
-				read.knob('note_font_color').setValue(4980991) # Green
+def knobChanged():
+	if nuke.thisNode().Class() == 'Read':
+		knob = nuke.thisNode().knob('file')
+		pf = PublishedFile.fromPath(knob.value())
 
-			# Add element id for future reference
-			elementIdKnob = nkutils.addCustomKnobWithValue(read, nuke.String_Knob, 'elementId', el.id)
-			elementIdKnob.setFlag(nuke.READ_ONLY)
+		if pf:
+			nkutils.updateReadWithElementInfo(nuke.thisNode(), Element.fromPk(pf.elementId), pf)
+
+
