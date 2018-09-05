@@ -16,15 +16,16 @@ class PublishedFile(DatabaseObject):
 
 	def __init__(self, elementName, elementType, filePath, versionlessFilePath, show=None, sequence=None, shot=None, comment=None, fix=None, dummy=False):
 		self.table = PublishedFile.TABLE
+
+		if dummy:
+			return
+
 		self.elementName = elementName
 		self.elementType = elementType
 		self.show = show if show else env.getEnvironment('show')
 		self.elementId = None
 		self.fixId = None
 		self._exists = None
-
-		if dummy:
-			return
 
 		if not self.show:
 			raise ValueError('Tried to fallback to environment-set show, but it was null.')
@@ -92,6 +93,29 @@ class PublishedFile(DatabaseObject):
 		globString = FrameSequence.asGlobString(self.file_path)
 
 		return glob.glob(globString)
+
+	@staticmethod
+	def fromPath(path):
+		if not os.path.isdir(os.path.dirname(path)):
+			return None
+
+		fs = FrameSequence(path)
+
+		if fs.isValid():
+			path = fs.getFormatted(includeDir=True)
+
+		from helix.database.sql import Manager
+		with Manager(willCommit=False) as mgr:
+			res = mgr.connection().execute(
+				'''
+					SELECT * from {} WHERE file_path='{}' OR versionless_path='{}'
+				'''.format(PublishedFile.TABLE, path, path)
+			).fetchone()
+
+			if res:
+				return PublishedFile.dummy().unmap(res)
+
+		return None
 
 	@property
 	def id(self):
