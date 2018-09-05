@@ -110,7 +110,7 @@ def convertPath(path):
 
 	for homePath in homePaths:
 		if homePath in os.environ:
-			val = os.environ[homePath]
+			val = os.path.join(os.environ[homePath], '{DATA}')
 
 			try:
 				tk = Tokenizer(path, val)
@@ -121,7 +121,7 @@ def convertPath(path):
 	if not tk:
 		return path
 
-	currentHome = getEnvironment('home', silent=True)
+	currentHome = os.path.join(getEnvironment('home', silent=True), '{DATA}')
 
 	if not currentHome:
 		return path
