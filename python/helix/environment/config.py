@@ -24,6 +24,7 @@ class GeneralConfigHandler(ConfigFileHandler):
 		self.versionPadding = None
 		self.framePadding = None
 		self.seqShotPadding = None
+		self.autoAddUsers = False
 		self.permGroups = {}
 		self.mayaLinux = None
 		self.houdiniLinux = None
@@ -49,6 +50,10 @@ class GeneralConfigHandler(ConfigFileHandler):
 			self.config.set('Formatting', 'FramePadding', 4)
 			self.config.set('Formatting', '# The number padding for sequence/shot folders')
 			self.config.set('Formatting', 'SequenceShotPadding', 4)
+
+			self.config.add_section('Database')
+			self.config.set('Database', '# This determines if newly encountered users should automatically be added to the database. If not, they will not be able to do anything in the system without being manually added.')
+			self.config.set('Database', 'AutoAddUsers', True)
 
 			self.config.add_section('Departments')
 			self.config.set('Departments', '# The master list of all possible departments users in the system will be a part of. Used for generating reports and being able to assign fixes on a per-department basis.')
@@ -90,12 +95,18 @@ class GeneralConfigHandler(ConfigFileHandler):
 		if self.config.has_section('Departments'):
 			self.departments = [d.strip() for d in self.config.get('Departments', 'departments').split(',')]
 
+		if self.config.has_section('Database'):
+			if self.config.has_option('Database', 'AutoAddUsers'):
+				self.autoAddUsers = self.config.getboolean('Database', 'AutoAddUsers')
+			else:
+				self.autoAddUsers = False
+
 		if self.config.has_section('Paths'):
 			if self.config.has_option('Paths', 'HELIX_LINUX_HOME'):
 				os.environ['HELIX_LINUX_HOME'] = self.config.get('Paths', 'HELIX_LINUX_HOME')
-			if self.config.has_option('Paths', 'HELIX_LINUX_HOME'):
+			if self.config.has_option('Paths', 'HELIX_WINDOWS_HOME'):
 				os.environ['HELIX_WINDOWS_HOME'] = self.config.get('Paths', 'HELIX_WINDOWS_HOME')
-			if self.config.has_option('Paths', 'HELIX_LINUX_HOME'):
+			if self.config.has_option('Paths', 'HELIX_MAC_HOME'):
 				os.environ['HELIX_MAC_HOME'] = self.config.get('Paths', 'HELIX_MAC_HOME')
 
 		if self.config.has_section('Executables-Linux'):
@@ -137,6 +148,9 @@ class GeneralConfigHandler(ConfigFileHandler):
 		# Departments
 		self.config.add_section('Departments')
 		self.config.set('Departments', 'departments', ', '.join(self.departments))
+
+		self.config.add_section('Database')
+		self.config.set('Database', 'AutoAddUsers', self.autoAddUsers)
 
 		# Paths
 		self.config.add_section('Paths')
