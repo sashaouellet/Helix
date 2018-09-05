@@ -111,6 +111,11 @@ class PermissionHandler(object):
 		user = Person.fromPk(self.currentUser)
 
 		if not user:
+			# Add user to DB automatically if we are configured to
+			if env.cfg.autoAddUsers:
+				user = Person(self.currentUser)
+				user.insert()
+
 			# User not existing causes other problems down the line...
 			# Should we handle that here? Or do I just silently ignore and put them
 			# in the default group..
@@ -120,6 +125,11 @@ class PermissionHandler(object):
 
 			if not permGroup:
 				permGroup = PermissionGroup.fromPk(PermissionGroup.DEFAULT)
+
+		# In circumstances where even the default perm group doesn't exist, we must add it
+		if not permGroup:
+			permGroup = PermissionGroup(PermissionGroup.DEFAULT, permissions=['helix.*'])
+			permGroup.insert()
 
 		self.group = permGroup.group_name
 		self.permNodes = permGroup.permissionList

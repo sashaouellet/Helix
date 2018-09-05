@@ -34,7 +34,7 @@ class Person(DatabaseObject):
 
 			# Create the default group right away if it doesn't exist
 			# otherwise, we can't insert the user into the database with that group
-			defGroup = PermissionGroup(PermissionGroup.DEFAULT)
+			defGroup = PermissionGroup(PermissionGroup.DEFAULT, permissions=['helix.*'])
 
 			if not defGroup.exists():
 				defGroup.insert()
