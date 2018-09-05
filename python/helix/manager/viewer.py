@@ -1899,6 +1899,19 @@ class BasicElementView(QTableWidget):
 
 		EditingDialog(self.parent, item.element).show()
 
+def parseArgs():
+	import argparse
+
+	parser = argparse.ArgumentParser(
+		prog='Helix',
+		description='Launches the Helix management system'
+	)
+
+	parser.add_argument('--dbPath', default=None, help='A specific absolute path for the database to open', nargs=1)
+	parser.add_argument('--setup', '-s', default=None, help='Whether to run the setup or not with the specified setup script path.', nargs='?')
+
+	return parser.parse_args()
+
 if __name__ == '__main__':
 	app = QApplication(sys.argv)
 	dbPath = env.getDBPath()
@@ -1907,13 +1920,35 @@ if __name__ == '__main__':
 	app.setOrganizationName('Helix')
 	app.setApplicationName('Manager')
 	app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt())
+
+	args = parseArgs()
+
+	if args.setup is not None:
+		# Do setup
+		import importlib, inspect
+		from helix.setup import SetupPlugin
+
+		try:
+			setup = importlib.import_module('helix.setup.{}'.format(args.setup))
+
+			for name, obj in inspect.getmembers(setup):
+				if inspect.isclass(obj) and obj.__name__ != SetupPlugin.__name__ and issubclass(obj, SetupPlugin):
+					plugin = obj()
+
+					if hasattr(plugin, 'main'):
+						plugin.main()
+						break
+					else:
+						raise RuntimeError('Plugin {} does not have a main method to execute'.format(obj.__name__))
+
+		except ImportError:
+			print 'Unable to run setup, module not found'
+			sys.exit(1)
+
 	app.setOverrideCursor(QCursor(Qt.WaitCursor))
 
 	settings = QSettings()
 	showSplash = settings.value('ui/showSplash', False).toBool()
-
-	if len(sys.argv) >= 2:
-		dbPath = sys.argv[1]
 
 	if showSplash:
 		pixmap = QPixmap(os.path.join(helix.root, 'ui', 'splash.jpg'))
@@ -1925,7 +1960,7 @@ if __name__ == '__main__':
 		splash.showMessage(random.choice(possibleMessages), alignment=Qt.AlignBottom | Qt.AlignLeft, color=Qt.white)
 		app.processEvents()
 
-	window = ManagerWindow(dbPath=dbPath)
+	window = ManagerWindow(dbPath=args.dbPath)
 
 	if showSplash:
 		# The "I want to see my splash screen damn it" cheat
