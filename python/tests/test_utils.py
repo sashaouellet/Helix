@@ -1,7 +1,10 @@
 import unittest
 import helix.utils.utils as utils
+from helix.utils.fileclassification import FrameSequence, Frame
 
 class UtilTestCase(unittest.TestCase):
+	def testFrameSequence(self):
+		pass
 	def testIsSanitary(self):
 		self.assertEqual(utils.isSanitary('foobar'), (True, []))
 		self.assertEqual(utils.isSanitary('fooBar2'), (True, []))
@@ -13,14 +16,14 @@ class UtilTestCase(unittest.TestCase):
 		self.assertEqual(utils.isSanitary('a'),
 			(
 				False,
-				['Must be at least 2 characters long']
+				['Must be at least 2 character(s) long']
 			)
 		)
 
 		self.assertEqual(utils.isSanitary('2'),
 			(
 				False,
-				['Must be at least 2 characters long',
+				['Must be at least 2 character(s) long',
 				 'Cannot start with a dash, underscore, or number']
 			),
 			'Starts with number'

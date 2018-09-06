@@ -23,6 +23,7 @@ def utilSuite():
 	suite = unittest.TestSuite()
 
 	suite.addTest(UtilTestCase('testIsSanitary'))
+	suite.addTest(UtilTestCase('testFrameSequence'))
 
 	return suite
 
