@@ -456,9 +456,12 @@ class PublishDialog(QDialog):
 		super(PublishDialog, self).accept()
 
 class NewShowDialog(QDialog):
-	def __init__(self, parent):
+	def __init__(self, parent, noCancel=False):
 		super(NewShowDialog, self).__init__(parent)
 		uic.loadUi(os.path.join(helix.root, 'ui', 'showCreation.ui'), self)
+
+		self.noCancel = noCancel
+		self.BTN_cancel.setDisabled(self.noCancel)
 
 		self.makeConnections()
 		self.checkCanCreate()
@@ -482,6 +485,10 @@ class NewShowDialog(QDialog):
 			self.LBL_issues.setText(
 				'<br>'.join(['<font color="red">{}</font>'.format(r) for r in reasons])
 			)
+
+	def reject(self):
+		if not self.noCancel:
+			super(NewShowDialog, self).reject()
 
 	def accept(self):
 		alias, resX, resY, fps, name = self.getInputs()
@@ -1533,8 +1540,8 @@ class ManagerWindow(QMainWindow):
 		if diff:
 			diff.resolve(discard=resp!=QMessageBox.Yes)
 
-	def handleNewShow(self):
-		NewShowDialog(self).show()
+	def handleNewShow(self, noCancel=False):
+		NewShowDialog(self, noCancel=noCancel).exec_()
 
 	def handleNewSequence(self):
 		index = self.LST_shows.selectionModel().currentIndex()
@@ -1782,6 +1789,10 @@ class ManagerWindow(QMainWindow):
 				self.LST_shows.setCurrentIndex(indexes[0])
 				self.handleShowSelected()
 
+			# Prompt user to make a new show if the DB has none
+			if not db.getShows():
+				self.handleNewShow(noCancel=True)
+
 	def handleDBReload(self):
 		QCoreApplication.instance().setOverrideCursor(QCursor(Qt.WaitCursor))
 		self.showModel.setShows(db.getShows())
@@ -1960,7 +1971,7 @@ if __name__ == '__main__':
 		splash.showMessage(random.choice(possibleMessages), alignment=Qt.AlignBottom | Qt.AlignLeft, color=Qt.white)
 		app.processEvents()
 
-	window = ManagerWindow(dbPath=args.dbPath)
+	window = ManagerWindow(dbPath=args.dbPath or env.getDBPath())
 
 	if showSplash:
 		# The "I want to see my splash screen damn it" cheat
