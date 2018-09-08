@@ -37,8 +37,8 @@ def relativeDate(dbTime):
 		num = int(round(hours))
 		return '{} {} ago'.format(num, 'hours' if num > 1 else 'hour')
 	elif months < 1:
+		num = int(round(days))
 		if weeks < 1:
-			num = int(round(days))
 			return '{} {} ago'.format(num, 'days' if num > 1 else 'day')
 		else:
 			return '{} {} ago'.format(int(round(weeks)), 'weeks' if num > 1 else 'week')
