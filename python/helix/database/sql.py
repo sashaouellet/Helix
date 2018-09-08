@@ -28,9 +28,6 @@ class Manager(object):
 		if not os.path.isdir(os.path.dirname(self.location)):
 			os.makedirs(os.path.dirname(self.location))
 
-		if not os.path.exists(self.location):
-			open(self.location, 'w').close()
-
 	def __enter__(self):
 		self.conn = sqlite3.connect(self.location)
 		self.conn.execute('PRAGMA foreign_keys = ON')
