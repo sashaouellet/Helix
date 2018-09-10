@@ -15,9 +15,6 @@ import sqlite3
 import hashlib
 from helix.database.sql import Manager
 
-with Manager() as mgr:
-	mgr.initTables()
-
 class DatabaseObject(object):
 	def get(self, attr, default=None):
 		with Manager(willCommit=False) as mgr:

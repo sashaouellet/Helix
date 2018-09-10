@@ -1,5 +1,6 @@
 import sqlite3
 import os
+from helix.utils.fileutils import FileLock, FileLockException
 
 class Manager(object):
 	TABLE_LIST = [
@@ -24,19 +25,31 @@ class Manager(object):
 			self.location = hxenv.getEnvironment('db')
 
 		self.willCommit = willCommit
-
-		if not os.path.isdir(os.path.dirname(self.location)):
-			os.makedirs(os.path.dirname(self.location))
+		self.fileLock = None
 
 	def __enter__(self):
-		self.conn = sqlite3.connect(self.location)
-		self.conn.execute('PRAGMA foreign_keys = ON')
+		if self.willCommit:
+			# Get file lock and connect to its temp file instead
+			import tempfile
+			self.fileLock = FileLock(self.location, tempFileDir=tempfile.gettempdir())
+
+			try:
+				self.fileLock.open()
+				self.conn = sqlite3.connect(self.fileLock.file)
+			except FileLockException:
+				raise RuntimeError('Database is currently being modified by a different process')
+		else:
+			self.conn = sqlite3.connect(self.location)
+			self.conn.execute('PRAGMA foreign_keys = ON')
 
 		return self
 
 	def __exit__(self, exception_type, exception_value, traceback):
 		if self.willCommit:
 			self.conn.commit()
+
+		if self.fileLock is not None:
+			self.fileLock.release()
 
 		self.conn.close()
 

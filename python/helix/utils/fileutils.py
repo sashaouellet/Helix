@@ -1,10 +1,134 @@
-import os, re, shutil
+import os, re, shutil, time
 import helix.environment.environment as env
+import uuid
 
 cfg = env.getConfig()
 
 SEQUENCE_FORMAT = 'sq{}'
 SHOT_FORMAT = 's{}'
+
+class FileLockException(Exception): pass
+
+class FileLock(object):
+	def __init__(self, file, timeout=5, keepVersions=5, tempFileDir=None):
+		"""Create an exclusive write lock on the specified file
+
+		Args:
+		    file (str): Full path to the file to obtain a lock on
+		    timeout (int, optional): The time, in seconds, before attempting to obtain the lock fails
+		    keepVersions (int, optional): Right before exiting, we create a backup of the file
+		    	in question. This specifies how many backup versions to keep. 0 indicates no backup
+		    	should be performed.
+		"""
+		self._file = file
+		self.timeout = timeout
+		self.keepVersions = keepVersions
+		self.uuid = str(uuid.uuid4())
+		self.lockFile = self._file + '.lock'
+		self.tempFile = self._file + '.' + self.uuid
+
+		if tempFileDir is not None:
+			_, f = os.path.split(self._file)
+			self.tempFile = os.path.join(tempFileDir, f + '.' + self.uuid)
+
+	def __enter__(self):
+		self.open()
+		return self
+
+	def open(self):
+		if not os.path.exists(self._file):
+			# We should try one more time after a brief delay, the file could be
+			# in the middle of being moved by another process
+			time.sleep(1)
+			if not os.path.exists(self._file):
+				raise ValueError("File doesn't exist: {}".format(self._file))
+
+		attempts = 10
+		interval = self.timeout / float(attempts)
+		curr = 0
+		hasLock = False
+
+		# Try to obtain the lock until we get it or we timeout
+		while curr < self.timeout and not hasLock:
+			hasLock = self.getLock()
+			curr += interval
+
+			time.sleep(interval)
+			# What do we do with dead locks?
+
+		if not hasLock:
+			raise FileLockException('Unable to obtain lock on: {}'.format(self._file))
+
+		shutil.copy(self._file, self.tempFile)
+
+	def release(self):
+		# Don't perform any operations if we don't have a valid lock
+		if self.validLock():
+			if self.keepVersions > 0:
+				bumpFileVersion(self._file, self.keepVersions)
+
+			# We've hopefully been operating on the temp file, so finalize all write
+			# operations by copying it to the original path, now that we've bumped
+			# the original path to version 1
+			shutil.copy2(self.tempFile, self._file)
+
+			os.remove(self.tempFile)
+			os.remove(self.lockFile)
+
+	def getLock(self):
+		if not os.path.exists(self.lockFile):
+			with open(self.lockFile, 'w+') as lock:
+				lock.write(self.uuid)
+
+			time.sleep(1)
+			return self.validLock()
+		else:
+			return self.validLock()
+
+	def validLock(self):
+		if os.path.exists(self.lockFile):
+			# A lock exists, but is it ours?
+			with open(self.lockFile, 'r') as lock:
+				uuid = lock.read().strip()
+
+				if uuid != self.uuid:
+					return False
+				else:
+					return True
+		else:
+			return False
+
+	def __exit__(self, exception_type, exception_value, traceback):
+		self.release()
+
+	@property
+	def file(self):
+		return self.tempFile
+
+def bumpFileVersion(file, maxVersion):
+	folder, file = os.path.split(file)
+	prefix, ext = os.path.splitext(file)
+	regx = re.compile(r'{}(\d+){}'.format(prefix, ext))
+	matches = filter(lambda x: regx.match(x), os.listdir(folder))
+	matches = sorted(matches, reverse=True, key=lambda x: int(regx.match(x).group(1)))
+
+	# Traverse versions from highest to lowest, discarding higher versions and moving up
+	# the rest by 1
+	for f in matches:
+		version = int(regx.match(f).group(1))
+
+		if version >= maxVersion:
+			# Delete versions exceeding max version
+			os.remove(os.path.join(folder, f))
+		else:
+			src = os.path.join(folder, f)
+			dest = os.path.join(folder, '{}{}{}'.format(prefix, version + 1, ext))
+			shutil.copy2(src, dest)
+
+	# Original file goes to version 1
+	src = os.path.join(folder, file)
+	dest = os.path.join(folder, '{}{}{}'.format(prefix, 1, ext))
+	shutil.copy2(src, dest)
 
 def makeRelative(path, envVar):
 	envValue = env.getEnvironment(envVar)
@@ -80,7 +204,6 @@ def linkPath(src, dest):
 
 def getNextVersionOfFile(file, asPath=True):
 	baseName, _, ext = parseFilePath(file)
-	print 'bn', baseName, 'ext', ext
 	fileRegexPattern = baseName + '_?([0-9]+)' + ext
 	regex = re.compile(fileRegexPattern)
 	fileDir = os.path.dirname(file)

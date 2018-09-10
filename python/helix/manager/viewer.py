@@ -1776,10 +1776,6 @@ class ManagerWindow(QMainWindow):
 		if os.path.exists(self.dbLoc):
 			env.setEnvironment('DB', self.dbLoc)
 
-			from helix.database.sql import Manager
-			with Manager() as mgr:
-				mgr.initTables()
-
 			self.showModel.setShows(db.getShows())
 			self.ACT_reload.setEnabled(True)
 
