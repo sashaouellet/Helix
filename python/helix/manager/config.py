@@ -7,13 +7,14 @@ import os, re
 import helix
 import helix.environment.environment as env
 from helix.environment.permissions import PermissionGroup, PermissionNodes
+from helix.database.person import Person
+from helix import hxdb
 
 class ConfigEditorDialog(QDialog):
 	def __init__(self, parent=None):
 		super(ConfigEditorDialog, self).__init__(parent)
 
 		self.canEditConfig = parent.permHandler.check(PermissionNodes.nodes['EDIT_CONFIG'], silent=True)
-		print 'EDIT CONFIG', self.canEditConfig
 		self.configHandler = env.getConfig()
 
 		uic.loadUi(os.path.join(helix.root, 'ui', 'configEditor.ui'), self)
@@ -46,11 +47,14 @@ class ConfigEditorDialog(QDialog):
 		if self.configHandler.seqShotPadding:
 			self.SPN_seqShotPadding.setValue(self.configHandler.seqShotPadding)
 
-		for name, pg in self.configHandler.permGroups.iteritems():
-			if name == 'defaultgroup':
-				self.LST_groups.insertItem(0, name)
+		from helix import hxdb
+		permGroups = hxdb.getAll(PermissionGroup)
+
+		for pg in permGroups:
+			if pg.group_name == 'defaultgroup':
+				self.LST_groups.insertItem(0, pg.group_name)
 			else:
-				self.LST_groups.addItem(name)
+				self.LST_groups.addItem(pg.group_name)
 
 			self.LST_groups.setCurrentRow(0)
 			self.handleGroupChange()
@@ -131,6 +135,7 @@ class ConfigEditorDialog(QDialog):
 		self.BTN_addGroup.clicked.connect(self.handleAddGroup)
 		self.BTN_addUser.clicked.connect(self.handleAddUser)
 		self.BTN_addPerm.clicked.connect(self.handleAddPerm)
+		self.BTN_removePerm.clicked.connect(self.handleRemovePerm)
 		self.BTN_removeGroup.clicked.connect(self.handleRemoveGroup)
 		self.BTN_removeUser.clicked.connect(self.handleRemoveUser)
 		self.BTN_mayaLinux.clicked.connect(lambda: self.handleChooseExe(self.LNE_mayaLinux))
@@ -160,8 +165,14 @@ class ConfigEditorDialog(QDialog):
 			QMessageBox(QMessageBox.Warning, 'Remove Group Error', 'Can\'t delete defaultgroup, it must always be defined!', buttons=QMessageBox.Ok, parent=self).exec_()
 			return
 
-		self.LST_groups.takeItem(self.LST_groups.currentRow())
-		self.configHandler.permGroups.pop(groupName)
+		pg = PermissionGroup.fromPk(groupName)
+
+		if pg is None:
+			QMessageBox(QMessageBox.Warning, 'Remove Group Error', '{} doesn\'t exist'.format(groupName), buttons=QMessageBox.Ok, parent=self).exec_()
+			return
+		else:
+			self.LST_groups.takeItem(self.LST_groups.currentRow())
+			pg.delete()
 
 	def handleAddGroup(self):
 		dialog = QDialog(self)
@@ -187,11 +198,12 @@ class ConfigEditorDialog(QDialog):
 			name = str(groupName.text()).strip()
 
 			if name:
-				if name in self.configHandler.permGroups:
+				pg = PermissionGroup(name)
+				if pg.exists():
 					QMessageBox(QMessageBox.Warning, 'Create Group Error', 'The group "{}" already exists, please select a different name.'.format(name), buttons=QMessageBox.Ok, parent=self).exec_()
 					return
 
-				self.configHandler.permGroups[name] = PermissionGroup(name, users=[], permissions=[])
+				pg.insert()
 				self.LST_groups.addItem(name)
 				self.LST_groups.setCurrentRow(self.LST_groups.count() - 1)
 				self.handleGroupChange()
@@ -203,11 +215,13 @@ class ConfigEditorDialog(QDialog):
 		buttonLayout = QHBoxLayout()
 		cancel = QPushButton('Cancel')
 		create = QPushButton('Add')
+		completer = QCompleter([p.username for p in hxdb.getUsers()], user)
 
 		cancel.clicked.connect(dialog.reject)
 		create.clicked.connect(dialog.accept)
 		create.setDefault(True)
 
+		user.setCompleter(completer)
 		layout.addWidget(user)
 		buttonLayout.addWidget(cancel)
 		buttonLayout.addWidget(create)
@@ -220,28 +234,26 @@ class ConfigEditorDialog(QDialog):
 			name = str(user.text()).strip()
 
 			if name:
-				for pg in self.configHandler.permGroups.values():
-					if pg.users and name in pg.users:
-						QMessageBox(QMessageBox.Warning, 'Add User Error', 'The user "{}" already exists in group "{}", please remove them from that group before trying again.'.format(name, pg.name), buttons=QMessageBox.Ok, parent=self).exec_()
-						return
+				user = Person.fromPk(name)
+
+				if not user:
+					raise ValueError('User: {} does not exist'.format(user))
 
 				group = str(self.LST_groups.selectedItems()[0].text())
 
-				self.configHandler.permGroups[group].users.append(name)
+				user.set('perm_group', group)
 				self.LST_users.addItem(name)
 				self.LST_users.clearSelection()
 				self.LST_users.setCurrentRow(self.LST_users.count() - 1)
 
 	def handleRemoveUser(self):
 		for selected in self.LST_users.selectedItems():
-			user = str(selected.text())
-			group = str(self.LST_groups.selectedItems()[0].text())
+			user = Person.fromPk(str(selected.text()))
 
-			listItem = self.LST_users.findItems(user, Qt.MatchFixedString)[0]
-			self.LST_users.takeItem(self.LST_users.row(listItem))
-			users = self.configHandler.permGroups[group].users
+			if not user:
+				continue
 
-			users.pop(users.index(user))
+			user.set('perm_group', PermissionGroup.DEFAULT)
 
 	def handleAddPerm(self):
 		dialog = QDialog(self)
@@ -270,10 +282,15 @@ class ConfigEditorDialog(QDialog):
 		if dialog.exec_() == QDialog.Accepted:
 			name = str(perm.text()).strip()
 			group = str(self.LST_groups.selectedItems()[0].text())
-			pg = self.configHandler.permGroups[group]
+			pg = PermissionGroup.fromPk(group)
+
+			# Should also be impossible..
+			if not pg:
+				QMessageBox(QMessageBox.Warning, 'Group Error', '{} doesn\'t exist'.format(group), buttons=QMessageBox.Ok, parent=self).exec_()
+				return
 
 			if name:
-				if pg.permissions and name in pg.permissions:
+				if pg.permissionList and name in pg.permissionList:
 					QMessageBox(QMessageBox.Warning, 'Add Permission Error', 'The permission "{}" already exists for the group "{}".'.format(name, group), buttons=QMessageBox.Ok, parent=self).exec_()
 					return
 
@@ -281,19 +298,40 @@ class ConfigEditorDialog(QDialog):
 					QMessageBox(QMessageBox.Warning, 'Add Permission Error', 'Invalid permission node. Nodes begin with the prefix "helix" (or "^helix" for negated nodes), start typing to see all options.'.format(name, group), buttons=QMessageBox.Ok, parent=self).exec_()
 					return
 
-				group = str(self.LST_groups.selectedItems()[0].text())
+				permList = pg.permissionList
+				permList.append(name)
+				pg.permissionList = permList
+				pg.set('perm_nodes', pg.perm_nodes)
 
-				self.configHandler.permGroups[group].permissions.append(name)
 				self.LST_perms.addItem(name)
 				self.LST_perms.clearSelection()
 				self.LST_perms.setCurrentRow(self.LST_perms.count() - 1)
+
+	def handleRemovePerm(self):
+		groupName = str(self.LST_groups.selectedItems()[0].text())
+		pg = PermissionGroup.fromPk(groupName)
+
+		if pg is None:
+			QMessageBox(QMessageBox.Warning, 'Remove Permission Error', '{} doesn\'t exist'.format(groupName), buttons=QMessageBox.Ok, parent=self).exec_()
+			return
+		elif self.LST_perms.count() > 0:
+			permList = pg.permissionList
+
+			if len(permList) == 1:
+				# Don't allow people to remove the last perm node the group has
+				QMessageBox(QMessageBox.Warning, 'Remove Permission Error', 'Cannot remove a permission if it is the group\'s only one', buttons=QMessageBox.Ok, parent=self).exec_()
+			else:
+				perm = str(self.LST_perms.takeItem(self.LST_perms.currentRow()).text())
+				permList.pop(permList.index(perm))
+				pg.permissionList = permList
+				pg.set('perm_nodes', pg.perm_nodes)
 
 	def handleGroupChange(self):
 		selected = self.LST_groups.selectedItems()
 
 		if len(selected) == 1:
 			groupName = str(selected[0].text())
-			pg = self.configHandler.permGroups.get(groupName)
+			pg = PermissionGroup.fromPk(groupName)
 
 			if not pg:
 				raise KeyError('Permission group {} is not defined'.format(groupName))
@@ -303,15 +341,16 @@ class ConfigEditorDialog(QDialog):
 			self.GRP_users.setEnabled(True)
 			self.BTN_removeGroup.setEnabled(True)
 
-			if groupName == 'defaultgroup':
-				self.LST_users.addItem('Users who are not in a group are considered a part of this one')
-				self.GRP_users.setEnabled(False)
-				self.BTN_removeGroup.setEnabled(False)
-			else:
-				for user in pg.users:
-					self.LST_users.addItem(user)
+			for user in hxdb.getUsers():
+				if user.perm_group == groupName:
+					self.LST_users.addItem(user.username)
 
-			for perm in pg.permissions:
+				if groupName == 'defaultgroup':
+					# self.LST_users.addItem('Users who are not in a group are considered a part of this one')
+					self.GRP_users.setEnabled(False)
+					self.BTN_removeGroup.setEnabled(False)
+
+			for perm in pg.permissionList:
 				self.LST_perms.addItem(perm)
 		else:
 			# Clear the users in group and permissions lists
