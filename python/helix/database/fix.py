@@ -146,6 +146,7 @@ class Fix(DatabaseObject):
 					self.elementId = el.id
 
 	def addComment(self, text):
+		text = text.replace("'", '').replace('"', '') # Temp work around until I can either escape quotes or properly update the DB with the value
 		self.commentList.append((env.USER, str(env.getCreationInfo(format=False)[1]), text))
 		self.set('comments', self.comments)
 
