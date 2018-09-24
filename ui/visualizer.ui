@@ -43,7 +43,7 @@
      <x>0</x>
      <y>0</y>
      <width>1043</width>
-     <height>22</height>
+     <height>28</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
@@ -98,6 +98,7 @@
      <addaction name="ACT_prefPerms"/>
      <addaction name="ACT_prefExe"/>
     </widget>
+    <addaction name="ACT_delete"/>
     <addaction name="ACT_editProperties"/>
     <addaction name="separator"/>
     <addaction name="menuPreferences"/>
@@ -485,6 +486,11 @@
   <action name="ACT_allFixes">
    <property name="text">
     <string>All</string>
+   </property>
+  </action>
+  <action name="ACT_delete">
+   <property name="text">
+    <string>Delete...</string>
    </property>
   </action>
  </widget>

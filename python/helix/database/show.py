@@ -110,6 +110,11 @@ class Show(ElementContainer, FixMixin):
 
 			return seqs
 
+	def getSequence(self, num):
+		seqs = self.getSequences(nums=[num])
+
+		return seqs[0] if seqs else None
+
 	def getShots(self, seqs=[], nums=[]):
 		from helix.database.sql import Manager
 		from helix.database.shot import Shot
@@ -138,6 +143,15 @@ class Show(ElementContainer, FixMixin):
 				shots.append(Shot.dummy().unmap(row))
 
 			return shots
+
+	def getShot(self, seq, num, clipName=None):
+		shots = self.getShots(seqs=[seq], nums=[num])
+
+		for s in shots:
+			if s.clipName == clipName:
+				return s
+
+		return None
 
 	def getElements(self, names=[], types=[], seqs=[], shots=[], clips=[], authors=[], assignedTo=[], status=[], exclusive=False, debug=False):
 		return super(Show, self).getElements(

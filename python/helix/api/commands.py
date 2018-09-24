@@ -26,13 +26,26 @@ def mkshow(alias, resolutionX, resolutionY, fps, name=None):
 
 @permissionCheck('DELETE_SHOW')
 def rmshow(showName, clean=False):
-	show = hxdb.removeShow(showName, clean)
+	show = Show.fromPk(showName)
 
 	if not show:
 		raise DatabaseError('Didn\'t recognize show: {}'.format(showName))
 
+	seqs = show.getSequences()
 
-	print 'Successfully removed show'
+	for seq in seqs:
+		rmseq(seq.num, clean=clean)
+
+	for el in show.getElements(exclusive=True):
+		if el.delete(clean):
+			continue
+		else:
+			raise DatabaseError('Unable to delete: {}. Cannot continue deletion.'.format(el))
+
+	if not show.delete(clean):
+		raise DatabaseError('Unable to delete show')
+	else:
+		print 'Successfully removed show'
 
 @permissionCheck('CREATE_SEQ')
 def mkseq(seqNum):
@@ -44,13 +57,26 @@ def mkseq(seqNum):
 
 @permissionCheck('DELETE_SEQ')
 def rmseq(seqNum, clean=False):
-	seq = env.getShow().removeSequence(int(seqNum), clean)
+	seq = Sequence(seqNum, show=env.getEnvironment('show', silent=True))
 
-	if not seq:
+	if not seq.exists():
 		raise DatabaseError('Sequence {} doesn\'t exist'.format(seqNum))
 
+	shots = seq.getShots()
 
-	print 'Successfully removed sequence'
+	for shot in shots:
+		rmshot(seqNum, shot.num, clipName=shot.clipName, clean=clean)
+
+	for el in seq.getElements(exclusive=True):
+		if el.delete(clean):
+			continue
+		else:
+			raise DatabaseError('Unable to delete: {}. Cannot continue deletion.'.format(el))
+
+	if not seq.delete(clean):
+		raise DatabaseError('Unable to delete sequence')
+	else:
+		print 'Successfully removed sequence'
 
 @permissionCheck('CREATE_SHOT')
 def mkshot(seqNum, shotNum, start=0, end=0, clipName=None, stages='delivered'):
@@ -71,15 +97,22 @@ def mkshot(seqNum, shotNum, start=0, end=0, clipName=None, stages='delivered'):
 		raise DatabaseError('Failed to create shot. Does this number already exist?')
 
 @permissionCheck('DELETE_SHOT')
-def rmshot(seqNum, shotNum, clean=False):
-	seq = env.getShow().getSequence(seqNum)
-	shot = seq.removeShot(int(shotNum), clean)
+def rmshot(seqNum, shotNum, clipName=None, clean=False):
+	shot = env.getShow().getShot(seqNum, shotNum, clipName=clipName)
 
 	if not shot:
 		raise DatabaseError('Shot {} doesn\'t exist for sequence {}'.format(shotNum, seqNum))
 
+	for el in shot.getElements(exclusive=True):
+		if el.delete(clean):
+			continue
+		else:
+			raise DatabaseError('Unable to delete: {}. Cannot continue deletion.'.format(el))
 
-	print 'Successfully removed shot'
+	if not shot.delete(clean):
+		raise DatabaseError('Unable to delete shot')
+	else:
+		print 'Successfully removed shot'
 
 @permissionCheck('POP')
 def pop(showName):
@@ -285,39 +318,59 @@ def elements(elType=None, sequence=None, shot=None, date=None):
 
 	els = container.getElements(types=elType)
 
-	if isinstance(container, Show):
-		for sequence in container.getSequences():
-			els.extend(sequence.getElements(types=elType))
-
-			for shot in sequence.getShots():
-				els.extend(shot.getElements(types=elType))
-
 	if date:
 		els = [e for e in els if e.isMoreRecent(date)]
-
-	# TODO sort by pubVersion
 
 	print '\n'.join([str(el) for el in els])
 
 @permissionCheck('DELETE_ELEMENT')
-def rme(elType, name, sequence=None, shot=None, clean=False):
+def rme(elType, name, sequence=None, shot=None, clipName=None, clean=False):
 	container = env.getShow() # Where to get element from
 
 	if sequence and shot:
-		_, container = env.getShow().getShot(sequence, shot)
+		container = Shot(shot, sequence, clipName=clipName)
+
+		if not container.exists():
+			raise DatabaseError('Invalid shot {}{} in sequence {}'.format(shot, clipName if clipName else '', sequence))
 	elif sequence:
-		container = env.getShow().getSequence(sequence)
+		container = Sequence(sequence)
 
-	element = container.getElement(elType.lower(), name) # TODO sanitize name
+		if not container.exists():
+			raise DatabaseError('Invalid sequence {}'.format(sequence))
 
-	container.destroyElement(elType, name, clean)
+	elements = container.getElements(types=[elType.lower()], names=[name], exclusive=True)
 
-	print 'Successfully removed element {}'.format(element)
+	if elements:
+		elements[0].delete(clean)
+
+	print 'Successfully removed element {}'.format(elements[0])
 
 # Debug and dev commands
 @permissionCheck('GET_ENV')
 def getenv():
 	print env.getAllEnv()
+
+@permissionCheck('SQL')
+def sql(statement):
+	from helix.database.sql import Manager
+
+	willCommit = False
+
+	if statement.split()[0].lower() != 'select':
+		willCommit = True
+
+	with Manager(willCommit=willCommit) as mgr:
+		res = mgr.connection().execute(statement)
+
+		for l in res:
+			print ' | '.join([str(s) for s in l])
+
+@permissionCheck('SQL')
+def initTables():
+	from helix.database.sql import Manager
+
+	with Manager() as mgr:
+		mgr.initTables()
 
 def main(cmd, argv):
 	if cmd == 'pop':
@@ -400,6 +453,7 @@ def main(cmd, argv):
 
 		parser.add_argument('seqNum', help='The number of the sequence to remove the shot from')
 		parser.add_argument('shotNum', help='The number of the shot to remove')
+		parser.add_argument('--clipName', default=None, help='The name of the clip associated with this shot')
 		parser.add_argument('--clean', '-c', action='store_true', help='Remove associated files/directories for this shot')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
@@ -445,6 +499,7 @@ def main(cmd, argv):
 		parser.add_argument('name', help='The name of the element')
 		parser.add_argument('--sequence', '-sq', default=None, help='The sequence number')
 		parser.add_argument('--shot', '-s', default=None, help='The shot number')
+		parser.add_argument('--clipName', default=None, help='The clip name of the shot')
 		parser.add_argument('--clean', '-c', action='store_true', help='Remove associated files/directories for this element')
 
 		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
@@ -620,11 +675,13 @@ def main(cmd, argv):
 
 		print element
 	elif cmd == 'help' or cmd == 'h' or cmd == '?':
-		if not os.path.exists(env.getEnvironment('HELP')):
+		import helix
+		helpFile = os.path.join(helix.root, 'docs', 'help.txt')
+		if not os.path.exists(helpFile):
 			print 'Helix help has not been properly configured'
 			return
 
-		with open(env.getEnvironment('HELP')) as file:
+		with open(helpFile) as file:
 			line = file.readline()
 
 			while line:
@@ -654,6 +711,16 @@ def main(cmd, argv):
 			print 'Enabled debug mode'
 		else:
 			print 'Disabled debug mode'
+	elif cmd == 'sql':
+		parser = HelixArgumentParser(prog='sql', description='Execute a SQL statement')
+
+		parser.add_argument('statement', help='The SQL statement')
+
+		args = {k:v for k,v in vars(parser.parse_args(argv)).items() if v is not None}
+
+		return sql(**args)
+	elif cmd == 'initTables':
+		return initTables()
 	elif cmd == 'exit' or cmd == 'quit':
 		exit()
 	else:

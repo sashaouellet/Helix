@@ -56,6 +56,9 @@ class HierarchyView(QTreeView):
 		idx = self.indexAt(event.pos())
 
 		if idx.isValid():
+			if self.right and self.right.canDeselect:
+				self.right.selectionModel().clear()
+				self.right.selectionModel().setCurrentIndex(QModelIndex(), QItemSelectionModel.Clear)
 			super(HierarchyView, self).mousePressEvent(event)
 		elif self.canDeselect:
 			self.selectionModel().clear()
@@ -282,6 +285,7 @@ class ElementTableItem(QLabel):
 		self.exploreReleaseAction = QAction('Open release directory', self)
 		self.publishAction = QAction('Publish...', self)
 		self.rollbackAction = QAction('Rollback...', self)
+		self.deleteAction = QAction('Delete...', self)
 		self.importAction = QAction('Import into this asset...', self)
 		self.exportAction = QAction('Export...', self)
 		self.propertiesAction = QAction('Properties...', self)
@@ -296,6 +300,7 @@ class ElementTableItem(QLabel):
 		self.addAction(self.exploreReleaseAction)
 		self.addAction(self.publishAction)
 		self.addAction(self.rollbackAction)
+		self.addAction(self.deleteAction)
 		self.addAction(self.importAction)
 		self.addAction(self.exportAction)
 		self.addAction(self.propertiesAction)
@@ -304,6 +309,7 @@ class ElementTableItem(QLabel):
 		self.exploreReleaseAction.triggered.connect(lambda: self.handleExplorer(False))
 		self.publishAction.triggered.connect(self.handlePublish)
 		self.rollbackAction.triggered.connect(self.handleRollback)
+		self.deleteAction.triggered.connect(self.handleDelete)
 		self.importAction.triggered.connect(self.handleImport)
 		self.exportAction.triggered.connect(self.handleExport)
 		self.propertiesAction.triggered.connect(self.parent.handleElementEdit)
@@ -323,6 +329,47 @@ class ElementTableItem(QLabel):
 	def handleRollback(self):
 		env.setEnvironment('element', self.elementId)
 		RollbackDialog(self.parent.parent, self.element).show()
+
+	def handleDelete(self):
+		el = self.parent.item.element
+
+		ret = QMessageBox.question(
+			self,
+			'Deleting {}'.format(el),
+			'This CANNOT be undone. Click "cancel" to abort.\nDo you also want to delete the associated files on disk?',
+			buttons=QMessageBox.Cancel|QMessageBox.No|QMessageBox.Yes,
+			defaultButton=QMessageBox.Yes
+		)
+
+		sq = Sequence.fromPk(el.sequenceId)
+		sh = Shot.fromPk(el.shotId)
+
+		cmd = [
+			'rme',
+			el.type,
+			el.name,
+		]
+
+		if sq:
+			cmd.extend(['-sq', str(sq.num)])
+
+		if sh:
+			cmd.extend(['-s', str(sh.num)])
+
+			if sh.clipName is not None:
+				cmd.extend(['--clipName', str(sh.clipName)])
+
+		if ret == QMessageBox.Yes:
+			# delete files
+			cmd.append('--clean')
+			console.inject(cmd)
+			self.parent.parent.handleDBReload()
+		elif ret == QMessageBox.No:
+			# don't delete files
+			console.inject(cmd)
+			self.parent.parent.handleDBReload()
+		else:
+			return
 
 	def handleImport(self):
 		dialog = ImportElementDialog(self.parent.parent)
@@ -1365,6 +1412,7 @@ class ManagerWindow(QMainWindow):
 		self.ACT_newSeq.triggered.connect(self.handleNewSequence)
 		self.ACT_newShot.triggered.connect(self.handleNewShot)
 		self.ACT_newElement.triggered.connect(self.handleNewElement)
+		self.ACT_delete.triggered.connect(self.handleDelete)
 		self.ACT_editProperties.triggered.connect(self.handleGetProperties)
 		self.ACT_explorer.triggered.connect(self.handleExplorer)
 		self.ACT_importElement.triggered.connect(self.handleImportElement)
@@ -1595,6 +1643,41 @@ class ManagerWindow(QMainWindow):
 		dock.setFloating(True)
 		dock.show()
 
+	def handleDelete(self):
+		item = self.currentSelectionIndex.internalPointer().data(0)
+
+		ret = QMessageBox.question(
+			self,
+			'Deleting {}'.format(item),
+			'This CANNOT be undone. Click "cancel" to abort.\nDo you also want to delete the associated files on disk?',
+			buttons=QMessageBox.Cancel|QMessageBox.No|QMessageBox.Yes,
+			defaultButton=QMessageBox.Yes
+		)
+
+		if isinstance(item, Show):
+			cmd = ['rmshow', item.alias]
+		elif isinstance(item, Sequence):
+			cmd = ['rmseq', str(item.num)]
+		elif isinstance(item, Shot):
+			sq = Sequence.fromPk(item.sequenceId)
+			cmd = ['rmshot', str(sq.num), str(item.num)]
+
+			if item.clipName is not None:
+				cmd.extend(['--clipName', str(item.clipName)])
+
+		if ret == QMessageBox.Yes:
+			# delete
+			cmd.append('--clean')
+			console.inject(cmd)
+			self.handleDBReload()
+		elif ret == QMessageBox.No:
+			# don't delete
+			console.inject(cmd)
+			self.handleDBReload()
+		else:
+			# don't do anything
+			return
+
 	def handleDataEdit(self, index):
 		if not index.isValid():
 			return
@@ -1771,14 +1854,12 @@ class ManagerWindow(QMainWindow):
 		QApplication.instance().restoreOverrideCursor()
 
 	def handleOpenDB(self, dbLoc=None):
-		self.dbLoc = dbLoc if dbLoc else QFileDialog.getOpenFileName(self, caption='Open Database File', filter='Database Files (*.json)')
+		print 'Loading DB...'
+		self.dbLoc = dbLoc if dbLoc else str(QFileDialog.getOpenFileName(self, caption='Open Database File', filter='Database Files (*.db)'))
 
 		if os.path.exists(self.dbLoc):
+			QCoreApplication.instance().setOverrideCursor(QCursor(Qt.WaitCursor))
 			env.setEnvironment('DB', self.dbLoc)
-
-			from helix.database.sql import Manager
-			with Manager() as mgr:
-				mgr.initTables()
 
 			self.showModel.setShows(db.getShows())
 			self.ACT_reload.setEnabled(True)
@@ -1792,6 +1873,9 @@ class ManagerWindow(QMainWindow):
 			# Prompt user to make a new show if the DB has none
 			if not db.getShows():
 				self.handleNewShow(noCancel=True)
+
+			QCoreApplication.instance().restoreOverrideCursor()
+		print 'Done'
 
 	def handleDBReload(self):
 		QCoreApplication.instance().setOverrideCursor(QCursor(Qt.WaitCursor))
@@ -1910,6 +1994,13 @@ class BasicElementView(QTableWidget):
 
 		EditingDialog(self.parent, item.element).show()
 
+	@property
+	def item(self):
+		row = self.currentRow()
+		col = self.currentColumn()
+
+		return self.cellWidget(row, col)
+
 def parseArgs():
 	import argparse
 
@@ -1959,15 +2050,17 @@ if __name__ == '__main__':
 	app.setOverrideCursor(QCursor(Qt.WaitCursor))
 
 	settings = QSettings()
-	showSplash = settings.value('ui/showSplash', False).toBool()
+	showSplash = settings.value('ui/showSplash', True).toBool()
 
 	if showSplash:
 		pixmap = QPixmap(os.path.join(helix.root, 'ui', 'splash.jpg'))
 		splash = QSplashScreen(pixmap,  Qt.WindowStaysOnTopHint)
 		possibleMessages = ['Reticulating splines...', 'Constructing additional pylons...', 'Mining cryptocurrency...']
+
 		import random
 		splash.show()
 		splash.raise_()
+		splash.activateWindow()
 		splash.showMessage(random.choice(possibleMessages), alignment=Qt.AlignBottom | Qt.AlignLeft, color=Qt.white)
 		app.processEvents()
 
@@ -1975,7 +2068,7 @@ if __name__ == '__main__':
 
 	if showSplash:
 		# The "I want to see my splash screen damn it" cheat
-		QThread.sleep(4)
+		# QThread.sleep(4)
 		splash.finish(window)
 
 	window.setWindowIcon(QIcon(os.path.join(helix.root, 'ui', 'icon.png')))

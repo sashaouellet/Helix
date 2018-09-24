@@ -12,11 +12,10 @@ __version__ = 2.0.0
 __date__    = 07/28/18
 """
 import sqlite3
+import shutil
 import hashlib
 from helix.database.sql import Manager
-
-with Manager() as mgr:
-	mgr.initTables()
+from helix.api.exceptions import DatabaseError
 
 class DatabaseObject(object):
 	def get(self, attr, default=None):
@@ -48,11 +47,20 @@ class DatabaseObject(object):
 
 			return self._exists
 
-	def delete(self):
+	def delete(self, clean=False):
 		with Manager() as mgr:
-			success = mgr._delete(self)
-
-			return success
+			if clean:
+				try:
+					if hasattr(self, 'work_path'):
+						shutil.rmtree(self.work_path)
+					if hasattr(self, 'release_path'):
+						shutil.rmtree(self.release_path)
+				except:
+					raise DatabaseError('Unable to delete some files on disk')
+				finally:
+					return mgr._delete(self)
+			else:
+				return mgr._delete(self)
 
 	def exists(self, fetch=False):
 		# we cache the exists after construction because we either fetched
@@ -163,6 +171,7 @@ def getAll(cls):
 	from helix.database.element import Element
 	from helix.database.person import Person
 	from helix.database.fix import Fix
+	from helix.environment.permissions import PermissionGroup
 
 	with Manager(willCommit=False) as mgr:
 		query = """SELECT * FROM {}""".format(cls.TABLE)
