@@ -110,7 +110,8 @@ def convertPath(path):
 
 	for homePath in homePaths:
 		if homePath in os.environ:
-			val = os.path.join(os.environ[homePath], '{DATA}')
+			sep = '\\' if 'WINDOWS' in homePath else '/'
+			val = os.environ[homePath] + sep + '{DATA}'
 
 			try:
 				tk = Tokenizer(path, val)
