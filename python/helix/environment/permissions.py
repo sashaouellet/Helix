@@ -31,7 +31,8 @@ class PermissionNodes(object):
 		VIEW_ELEMENTS 	= 'helix.view.element',
 		GET_ENV 		= 'helix.getenv',
 		VIEW_CONFIG 	= 'helix.config.view',
-		EDIT_CONFIG 	= 'helix.config.edit'
+		EDIT_CONFIG 	= 'helix.config.edit',
+		SQL				= 'helix.sql'
 	)
 
 	@staticmethod
