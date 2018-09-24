@@ -98,7 +98,7 @@ class Element(DatabaseObject, FixMixin):
 			return
 
 		if name is not None:
-			sanitary, reasons = utils.isSanitary(name)
+			sanitary, reasons = utils.isSanitary(name, maxChars=25)
 
 			if not sanitary:
 				raise ValueError('Invalid element name specified:' + '\n'.join(reasons))
