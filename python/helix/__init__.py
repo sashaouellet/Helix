@@ -14,6 +14,7 @@ from helix.database.publishedFile import PublishedFile
 from helix.database.snapshot import Snapshot
 from helix.database.stage import Stage
 from helix.database.sql import Manager
+from helix.environment.permissions import PermissionGroup
 
 root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 stylesheetPath = os.path.join(root, 'python', 'QDarkStyleSheet')
