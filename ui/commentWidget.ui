@@ -119,7 +119,7 @@
    <item>
     <layout class="QHBoxLayout" name="horizontalLayout_2">
      <item>
-      <widget class="QPushButton" name="pushButton">
+      <widget class="QPushButton" name="BTN_reply">
        <property name="text">
         <string>Reply</string>
        </property>
