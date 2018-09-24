@@ -1,5 +1,6 @@
 import sqlite3
 import os
+from helix.utils.fileutils import FileLock, FileLockException
 
 class Manager(object):
 	TABLE_LIST = [
@@ -24,16 +25,24 @@ class Manager(object):
 			self.location = hxenv.getEnvironment('db')
 
 		self.willCommit = willCommit
-
-		if not os.path.isdir(os.path.dirname(self.location)):
-			os.makedirs(os.path.dirname(self.location))
-
-		if not os.path.exists(self.location):
-			open(self.location, 'w').close()
+		self.fileLock = None
 
 	def __enter__(self):
-		self.conn = sqlite3.connect(self.location)
-		self.conn.execute('PRAGMA foreign_keys = ON')
+		if self.willCommit:
+			# Get file lock and connect to its temp file instead
+			import tempfile
+			from helix import hxenv
+			tempDir = tempfile.gettempdir() if hxenv.cfg.makeTempFile else None
+			self.fileLock = FileLock(self.location, tempFileDir=tempDir)
+
+			try:
+				self.fileLock.open()
+				self.conn = sqlite3.connect(self.fileLock.file)
+			except FileLockException:
+				raise RuntimeError('Database is currently being modified by a different process')
+		else:
+			self.conn = sqlite3.connect(self.location)
+			self.conn.execute('PRAGMA foreign_keys = ON')
 
 		return self
 
@@ -42,6 +51,9 @@ class Manager(object):
 			self.conn.commit()
 
 		self.conn.close()
+
+		if self.fileLock is not None:
+			self.fileLock.release()
 
 	def connection(self):
 		return self.conn
@@ -253,7 +265,7 @@ class Manager(object):
 				'elementId'			VARCHAR(32) NOT NULL,
 				'fixId'				VARCHAR(32),
 				'show'				VARCHAR(10),
-				'versionless_path', TEXT NOT NULL,
+				'versionless_path'  TEXT NOT NULL,
 				FOREIGN KEY('author') REFERENCES 'people'('username'),
 				FOREIGN KEY('elementId') REFERENCES 'elements'('id')
 				FOREIGN KEY('fixId') REFERENCES 'fixes'('id')
