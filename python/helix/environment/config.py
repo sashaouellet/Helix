@@ -25,6 +25,7 @@ class GeneralConfigHandler(ConfigFileHandler):
 		self.framePadding = None
 		self.seqShotPadding = None
 		self.autoAddUsers = False
+		self.makeTempFile = False
 		self.permGroups = {}
 		self.mayaLinux = None
 		self.houdiniLinux = None
@@ -54,6 +55,8 @@ class GeneralConfigHandler(ConfigFileHandler):
 			self.config.add_section('Database')
 			self.config.set('Database', '# This determines if newly encountered users should automatically be added to the database. If not, they will not be able to do anything in the system without being manually added.')
 			self.config.set('Database', 'AutoAddUsers', True)
+			self.config.set('Database', '# When True, a temp file will be made locally for database commits. This is necessary to avoid database locks when the DB is hosted on a samba mounted drive (i.e. network share).')
+			self.config.set('Database', 'MakeTempFile', False)
 
 			self.config.add_section('Departments')
 			self.config.set('Departments', '# The master list of all possible departments users in the system will be a part of. Used for generating reports and being able to assign fixes on a per-department basis.')
@@ -100,6 +103,11 @@ class GeneralConfigHandler(ConfigFileHandler):
 				self.autoAddUsers = self.config.getboolean('Database', 'AutoAddUsers')
 			else:
 				self.autoAddUsers = False
+
+			if self.config.has_option('Database', 'MakeTempFile'):
+				self.makeTempFile = self.config.getboolean('Database', 'MakeTempFile')
+			else:
+				self.makeTempFile = False
 
 		if self.config.has_section('Paths'):
 			if self.config.has_option('Paths', 'HELIX_LINUX_HOME'):
@@ -151,13 +159,14 @@ class GeneralConfigHandler(ConfigFileHandler):
 
 		self.config.add_section('Database')
 		self.config.set('Database', 'AutoAddUsers', self.autoAddUsers)
+		self.config.set('Database', 'MakeTempFile', self.makeTempFile)
 
 		# Paths
 		self.config.add_section('Paths')
 
 		for homePath in ('HELIX_LINUX_HOME', 'HELIX_WINDOWS_HOME', 'HELIX_MAC_HOME'):
 			if homePath in os.environ:
-				self.config.set(homePath, os.environ[homePath])
+				self.config.set('Paths', homePath, os.environ[homePath])
 
 		# Linux executables
 		if (self.mayaLinux or self.houdiniLinux or self.nukeLinux):
