@@ -11,6 +11,8 @@ import helix.utils.utils as utils
 Comment = collections.namedtuple('Collections', ('user', 'time', 'text'))
 
 class CommentWidget(QFrame):
+	replied = pyqtSignal(str)
+
 	def __init__(self, parent, commentTuple):
 		super(CommentWidget, self).__init__(parent)
 		uic.loadUi(os.path.join(helix.root, 'ui', 'commentWidget.ui'), self)
@@ -18,6 +20,7 @@ class CommentWidget(QFrame):
 		self.comment = Comment(*commentTuple)
 
 		self.initUI()
+		self.makeConnections()
 
 	def initUI(self):
 		self.LBL_user.setText('<b>{}</b>'.format(self.comment.user))
@@ -39,3 +42,6 @@ class CommentWidget(QFrame):
 				border-radius: 13px; \
 			}}'.format(darkGray.red(), darkGray.green(), darkGray.blue(), self.objectName(), outline.red(), outline.green(), outline.blue())
 		)
+
+	def makeConnections(self):
+		self.BTN_reply.clicked.connect(lambda: self.replied.emit(self.comment.user))

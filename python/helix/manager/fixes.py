@@ -26,6 +26,7 @@ class FixDialog(QDialog):
 		self.fix = fix
 		self.shots = []
 		self.elements = []
+		self.commentHasEntered = False
 
 		self.initUI()
 		self.makeConnections()
@@ -110,12 +111,25 @@ class FixDialog(QDialog):
 			self.TXT_body.setReadOnly(True)
 
 			for comment in reversed(self.fix.commentList):
-				self.LAY_comments.addWidget(CommentWidget(self, comment))
+				commentWidget = CommentWidget(self, comment)
+
+				self.LAY_comments.addWidget(commentWidget)
+				commentWidget.replied.connect(self.handleCommentReply)
 
 			self.setWindowTitle('Fix #{} ({})'.format(self.fix.num, self.fix.show))
+		else:
+			self.GRP_activity.setVisible(False)
+			self.TXT_addComment.setVisible(False)
+			self.resize(self.width(), 200)
 
 	def toggleDue(self):
 		self.DATE_due.setEnabled(self.CHK_due.isChecked())
+
+	def handleCommentReply(self, user):
+		self.commentHasEntered = True
+		self.TXT_addComment.setFocus()
+		self.TXT_addComment.setPlainText('@{}\n'.format(user))
+		self.TXT_addComment.moveCursor(QTextCursor.End)
 
 	def fixerChanged(self):
 		# Updates department combo box to reflect the "assigned user's" department
@@ -179,6 +193,7 @@ class FixDialog(QDialog):
 		self.BTN_cancel.clicked.connect(self.reject)
 		self.LNE_title.textChanged.connect(self.checkCanCreate)
 		self.TXT_body.textChanged.connect(self.checkCanCreate)
+		self.TXT_addComment.cursorPositionChanged.connect(self.handleCommentBoxEntered)
 		self.CMB_show.currentIndexChanged.connect(self.populateSeqAndShot)
 		self.CMB_seq.currentIndexChanged.connect(self.populateShots)
 		self.CMB_shot.currentIndexChanged.connect(self.populateElements)
@@ -188,6 +203,11 @@ class FixDialog(QDialog):
 			self.BTN_submit.setEnabled(False)
 		else:
 			self.BTN_submit.setEnabled(True)
+
+	def handleCommentBoxEntered(self):
+		if not self.commentHasEntered:
+			self.TXT_addComment.clear() # For some reason we get a RuntimeError here, but it falls through..
+			self.commentHasEntered = True
 
 	def accept(self):
 		show = str(self.CMB_show.currentText())
@@ -241,6 +261,12 @@ class FixDialog(QDialog):
 
 			if deadline != self.fix.deadline:
 				self.fix.set('deadline', deadline)
+
+			# Submit comment if text in box
+			comment = str(self.TXT_addComment.toPlainText())
+
+			if comment and self.commentHasEntered:
+				self.fix.addComment(comment)
 
 			QMessageBox.information(self, 'Fix #{}'.format(self.fix.num), 'Changes submitted')
 
