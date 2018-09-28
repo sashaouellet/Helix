@@ -1452,6 +1452,7 @@ class ManagerWindow(QMainWindow):
 
 		self.ACT_about.triggered.connect(self.handleAbout)
 		self.ACT_manual.triggered.connect(lambda: QDesktopServices.openUrl(QUrl('http://helix.readthedocs.io/en/dev')))
+		self.ACT_bugReport.triggered.connect(lambda: QDesktopServices.openUrl(QUrl('https://github.com/sashaouellet/Helix/issues/new/choose')))
 
 		self.MENU_elementTypes.clear()
 		self.MENU_elementTypes.setWindowTitle('Element Type Filter')
@@ -1654,7 +1655,7 @@ class ManagerWindow(QMainWindow):
 			defaultButton=QMessageBox.No
 		)
 
-		if ret != QMessageBox.YES:
+		if ret != QMessageBox.Yes:
 			return
 
 		ret = QMessageBox.question(
@@ -1674,7 +1675,7 @@ class ManagerWindow(QMainWindow):
 				defaultButton=QMessageBox.Yes
 			)
 
-			if finalConfirmation != QMessageBox.YES:
+			if finalConfirmation != QMessageBox.Yes:
 				return
 
 		if isinstance(item, Show):
