@@ -43,6 +43,8 @@ class PermissionNodes(object):
 		ret = nodes[:]
 
 		for node in nodes:
+			ret.append('^' + node)
+
 			permGroups = node.split('.')
 
 			for i in range(0, len(permGroups) - 1):
