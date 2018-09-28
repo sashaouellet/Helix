@@ -364,7 +364,10 @@ class Element(DatabaseObject, FixMixin):
 
 			# Hard link to versionless
 			for versionless, versioned in zip(fileName.getFramesAsFilePaths(), newSeq.getFramesAsFilePaths()):
-				os.link(versioned, versionless)
+				if env.OS != env.WIN:
+					os.link(versioned, versionless)
+				else:
+					shutil.copy2(versioned, versionless)
 
 			return (os.path.realpath(fileName.getFormatted(includeDir=True)), os.path.realpath(newSeq.getFormatted(includeDir=True)))
 		elif os.path.isdir(fileName):
@@ -415,7 +418,10 @@ class Element(DatabaseObject, FixMixin):
 					os.remove(os.path.join(root, f))
 
 			shutil.copy2(fileName, versionedDest)
-			os.link(versionedDest, versionless)
+			if env.OS != env.WIN:
+				os.link(versionedDest, versionless)
+			else:
+				shutil.copy2(versionedDest, versionless)
 
 			return (os.path.realpath(versionless), os.path.realpath(versionedDest))
 

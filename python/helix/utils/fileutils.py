@@ -199,11 +199,17 @@ def linkPath(src, dest):
 			for f in files:
 				fromfile = os.path.join(root, f)
 				to = os.path.join(curdest, f)
-				os.link(fromfile, to)
+				if env.OS != env.WIN:
+					os.link(fromfile, to)
+				else:
+					shutil.copy2(fromfile, to)
 
 		os.chdir(working_dir)
 	else:
-		os.link(src, dest)
+		if env.OS != env.WIN:
+			os.link(src, dest)
+		else:
+			shutil.copy2(src, dest)
 
 def getNextVersionOfFile(file, asPath=True):
 	baseName, _, ext = parseFilePath(file)
