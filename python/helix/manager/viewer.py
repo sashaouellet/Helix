@@ -1649,10 +1649,33 @@ class ManagerWindow(QMainWindow):
 		ret = QMessageBox.question(
 			self,
 			'Deleting {}'.format(item),
-			'This CANNOT be undone. Click "cancel" to abort.\nDo you also want to delete the associated files on disk?',
-			buttons=QMessageBox.Cancel|QMessageBox.No|QMessageBox.Yes,
-			defaultButton=QMessageBox.Yes
+			'You are about to delete: {}. This CANNOT be undone. Are you absolutely sure you want to proceed?'.format(item),
+			buttons=QMessageBox.No|QMessageBox.Yes,
+			defaultButton=QMessageBox.No
 		)
+
+		if ret != QMessageBox.YES:
+			return
+
+		ret = QMessageBox.question(
+			self,
+			'Deleting {}'.format(item),
+			'Do you also want to delete the associated files on disk?',
+			buttons=QMessageBox.No|QMessageBox.Yes,
+			defaultButton=QMessageBox.No
+		)
+
+		if isinstance(item, Show):
+			finalConfirmation = QMessageBox.question(
+				self,
+				'Deleting {}'.format(item),
+				'You are attempting to delete an ENTIRE SHOW. There is no turning back once you press "Yes". Please be sure that you want to proceed.',
+				buttons=QMessageBox.No|QMessageBox.Yes,
+				defaultButton=QMessageBox.Yes
+			)
+
+			if finalConfirmation != QMessageBox.YES:
+				return
 
 		if isinstance(item, Show):
 			cmd = ['rmshow', item.alias]
